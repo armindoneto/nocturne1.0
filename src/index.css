@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Hanken+Grotesk:wght@300;400;500;600;700;800&family=Geist:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Manrope", sans-serif;
+  --font-mono: "Geist", monospace;
+
+  --color-brand-primary: #ffd700;
+  --color-brand-secondary: #ffe399;
+  --color-brand-accent: #f4c300;
+  --color-bg-base: #050505;
+  --color-bg-surface-low: #0a0a0a;
+  --color-bg-surface-med: #131313;
+  --color-bg-surface-high: #1c1b1b;
+  --color-bg-elevated: #242424;
+  --color-text-high: #f2f2f2;
+  --color-text-mid: #b5b5b5;
+  --color-text-muted: #8e8e93;
+}
+
+@layer base {
+  body {
+    background-color: #050505;
+    color: #e5e2e1;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+}
+
+.gold-glow {
+  box-shadow: 0 0 25px rgba(255, 215, 0, 0.08);
+}
+
+.gold-glow-hover:hover {
+  box-shadow: 0 0 35px rgba(255, 215, 0, 0.15);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #050505;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #2c2c2e;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #444446;
+}
+
