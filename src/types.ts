@@ -52,4 +52,10 @@ export interface UserProfile {
   customMainAccount: string;
 }
 
+export interface PatrimonyEntry {
+  id: string;
+  monthYear: string; // e.g. "05/2026"
+  amount: number;
+}
+
 export type ActiveTab = 'inicio' | 'transacoes' | 'cartoes' | 'perfil';

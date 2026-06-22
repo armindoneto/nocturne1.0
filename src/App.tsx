@@ -38,11 +38,18 @@ import {
   GripVertical,
   Clock,
   Flame,
-  Zap
+  Zap,
+  Settings,
+  RefreshCw,
+  Sparkles,
+  History
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry } from './types';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry } from './types';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
+import type { FirebaseUser } from './firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import {
   INITIAL_USER,
   INITIAL_ACCOUNTS,
@@ -167,6 +174,17 @@ function AccountItem({ acc, onEdit, onDelete, onAddBalance, onSubBalance }: Acco
 }
 
 export default function App() {
+  // --- Firebase Auth & Synced States ---
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [dataLoadedFromFirestore, setDataLoadedFromFirestore] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  // --- Service Worker & Update States ---
+  const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [swUpdateAvailable, setSwUpdateAvailable] = useState<boolean>(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
+
   // --- Persistent States ---
   const [user, setUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('nocturne_user');
@@ -273,7 +291,7 @@ export default function App() {
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'temp'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'temp' | 'config'>('budget');
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountBalance, setNewAccountBalance] = useState('');
   const [newAccountColor, setNewAccountColor] = useState<string>('brand-primary');
@@ -329,10 +347,34 @@ export default function App() {
   // --- Toast notification for micro-interactions ---
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // --- Patrimony History States ---
+  const [patrimonyHistory, setPatrimonyHistory] = useState<PatrimonyEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_patrimony_history');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return [
+      { id: 'pe-1', monthYear: '02/2026', amount: 48000.00 },
+      { id: 'pe-2', monthYear: '03/2026', amount: 52500.00 },
+      { id: 'pe-3', monthYear: '04/2026', amount: 55000.00 },
+      { id: 'pe-4', monthYear: '05/2026', amount: 62300.00 },
+    ];
+  });
+  const [isPatrimonyModalOpen, setIsPatrimonyModalOpen] = useState(false);
+  const [showAddPatrimonyForm, setShowAddPatrimonyForm] = useState(false);
+  const [newPatrimonyMonthYear, setNewPatrimonyMonthYear] = useState('');
+  const [newPatrimonyAmount, setNewPatrimonyAmount] = useState('');
+
   // Synchronize localStorage
   useEffect(() => {
     localStorage.setItem('nocturne_user', JSON.stringify(user));
   }, [user]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_patrimony_history', JSON.stringify(patrimonyHistory));
+  }, [patrimonyHistory]);
 
   useEffect(() => {
     localStorage.setItem('nocturne_accounts', JSON.stringify(accounts));
@@ -370,9 +412,289 @@ export default function App() {
     localStorage.setItem('nocturne_temp_categories', JSON.stringify(tempCategories));
   }, [tempCategories]);
 
+  // --- Firebase Authenticated Sync & Listeners ---
+  const handleFirestoreError = (error: unknown, operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write', path: string | null) => {
+    const errInfo = {
+      error: error instanceof Error ? error.message : String(error),
+      authInfo: {
+        userId: auth.currentUser?.uid,
+        email: auth.currentUser?.email,
+        emailVerified: auth.currentUser?.emailVerified,
+        isAnonymous: auth.currentUser?.isAnonymous,
+        tenantId: auth.currentUser?.tenantId,
+        providerInfo: auth.currentUser?.providerData?.map(provider => ({
+          providerId: provider.providerId,
+          email: provider.email,
+        })) || []
+      },
+      operationType,
+      path
+    };
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    throw new Error(JSON.stringify(errInfo));
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setFirebaseUser(u);
+      if (u) {
+        setAuthLoading(true);
+        const pathStr = `users/${u.uid}`;
+        try {
+          const docRef = doc(db, 'users', u.uid);
+          let docSnap;
+          try {
+            docSnap = await getDoc(docRef);
+          } catch (getErr) {
+            handleFirestoreError(getErr, 'get', pathStr);
+            return;
+          }
+
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.user) setUser(data.user);
+            if (data.accounts) setAccounts(data.accounts);
+            if (data.budgetAccounts) setBudgetAccounts(data.budgetAccounts);
+            if (data.transactions) setTransactions(data.transactions);
+            if (data.cards) setCards(data.cards);
+            if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
+            if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
+            if (data.periodEnd !== undefined) setPeriodEnd(data.periodEnd);
+            if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
+            if (data.tempCategories) setTempCategories(data.tempCategories);
+            if (data.patrimonyHistory) setPatrimonyHistory(data.patrimonyHistory);
+          } else {
+            // Document doesn't exist, migrate or initialize
+            const initialSyncData = {
+              user,
+              accounts,
+              budgetAccounts,
+              transactions,
+              cards,
+              periodActive,
+              periodStart,
+              periodEnd,
+              periodTotal,
+              tempCategories,
+              patrimonyHistory
+            };
+            try {
+              await setDoc(docRef, JSON.parse(JSON.stringify(initialSyncData)));
+            } catch (writeErr) {
+              handleFirestoreError(writeErr, 'write', pathStr);
+              return;
+            }
+          }
+          setDataLoadedFromFirestore(true);
+        } catch (err) {
+          console.error('Error fetching data from Firestore:', err);
+          triggerToast('Erro ao sincronizar dados com o servidor.');
+        } finally {
+          setAuthLoading(false);
+        }
+      } else {
+        setDataLoadedFromFirestore(false);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Synchronize with Firestore (Cloud Database)
+  useEffect(() => {
+    if (!firebaseUser || !dataLoadedFromFirestore) return;
+
+    const timer = setTimeout(async () => {
+      setSaveLoading(true);
+      const pathStr = `users/${firebaseUser.uid}`;
+      try {
+        const docRef = doc(db, 'users', firebaseUser.uid);
+        const dataToSave = {
+          user,
+          accounts,
+          budgetAccounts,
+          transactions,
+          cards,
+          periodActive,
+          periodStart,
+          periodEnd,
+          periodTotal,
+          tempCategories,
+          patrimonyHistory
+        };
+        try {
+          await setDoc(docRef, JSON.parse(JSON.stringify(dataToSave)));
+        } catch (writeErr) {
+          handleFirestoreError(writeErr, 'write', pathStr);
+        }
+      } catch (err) {
+        console.error('Error saving data to Firestore:', err);
+      } finally {
+        setSaveLoading(false);
+      }
+    }, 1500); // 1.5 seconds debounce to avoid excessive writes
+
+    return () => clearTimeout(timer);
+  }, [
+    firebaseUser,
+    dataLoadedFromFirestore,
+    user,
+    accounts,
+    budgetAccounts,
+    transactions,
+    cards,
+    periodActive,
+    periodStart,
+    periodEnd,
+    periodTotal,
+    tempCategories,
+    patrimonyHistory
+  ]);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setAuthLoading(true);
+      await signInWithPopup(auth, googleProvider);
+      triggerToast('Sessão iniciada com sucesso!');
+    } catch (err: any) {
+      console.error('Google login error:', err);
+      if (err.code === 'auth/popup-blocked') {
+        triggerToast('Popup de login bloqueada. Tente abrir o app em nova aba!');
+      } else {
+        triggerToast('Falha ao autenticar com Google.');
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      setAuthLoading(true);
+      await signOut(auth);
+      // Reset to initials on logout
+      setUser(INITIAL_USER);
+      setAccounts(INITIAL_ACCOUNTS);
+      setBudgetAccounts([
+        { id: 'b1', name: 'Æternum', balance: 0.00 },
+        { id: 'b2', name: 'Repo Nu', balance: 0.00 },
+        { id: 'b3', name: 'Nubank', balance: 0.00 },
+        { id: 'b4', name: 'Pai', balance: 0.00 },
+        { id: 'b5', name: 'Mercado Livre', balance: 0.00 },
+      ]);
+      setTransactions(INITIAL_TRANSACTIONS);
+      setCards(INITIAL_CARDS);
+      setPeriodActive(false);
+      setPeriodStart('');
+      setPeriodEnd('');
+      setPeriodTotal(0);
+      setTempCategories([]);
+      setPatrimonyHistory([
+        { id: 'pe-1', monthYear: '02/2026', amount: 48000.00 },
+        { id: 'pe-2', monthYear: '03/2026', amount: 52500.00 },
+        { id: 'pe-3', monthYear: '04/2026', amount: 55000.00 },
+        { id: 'pe-4', monthYear: '05/2026', amount: 62300.00 },
+      ]);
+      triggerToast('Sessão encerrada com sucesso.');
+    } catch (err) {
+      console.error('Logout error:', err);
+      triggerToast('Erro ao encerrar sessão.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // --- Service Worker Lifecycle & Action Listeners ---
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          setSwRegistration(registration);
+
+          // Check for waiting update immediately
+          if (registration.waiting) {
+            setSwUpdateAvailable(true);
+          }
+
+          // Monitor for future service worker updates
+          registration.addEventListener('updatefound', () => {
+            const installing = registration.installing;
+            if (installing) {
+              installing.addEventListener('statechange', () => {
+                if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                  setSwUpdateAvailable(true);
+                }
+              });
+            }
+          });
+        })
+        .catch((error) => {
+          console.warn('Service Worker registration skipped or failed:', error);
+        });
+
+      // Reload upon successful SKIP_WAITING claim
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+    }
+  }, []);
+
+  const handleUpdateApp = () => {
+    if (swRegistration && swRegistration.waiting) {
+      swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } else {
+      window.location.reload();
+    }
+  };
+
+  const checkServiceWorkerUpdate = async () => {
+    if (!('serviceWorker' in navigator)) {
+      triggerToast('Service Worker não suportado neste navegador.');
+      return;
+    }
+    setIsCheckingUpdate(true);
+    try {
+      if (swRegistration) {
+        await swRegistration.update();
+        if (swRegistration.waiting) {
+          setSwUpdateAvailable(true);
+          triggerToast('Nova versão encontrada!');
+        } else {
+          triggerToast('O aplicativo já está na versão mais recente.');
+        }
+      } else {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          setSwRegistration(reg);
+          await reg.update();
+          if (reg.waiting) {
+            setSwUpdateAvailable(true);
+            triggerToast('Nova versão encontrada!');
+          } else {
+            triggerToast('O aplicativo já está na versão mais recente.');
+          }
+        } else {
+          triggerToast('Service worker temporariamente indisponível.');
+        }
+      }
+    } catch (err) {
+      console.warn('Manual update check error:', err);
+      triggerToast('Nenhuma nova atualização disponível no servidor.');
+    } finally {
+      setTimeout(() => {
+        setIsCheckingUpdate(false);
+      }, 800);
+    }
   };
 
   const totalPeriodDays = useMemo(() => {
@@ -1013,6 +1335,106 @@ export default function App() {
     triggerToast(`${isAddition ? 'Depósito de' : 'Retirada de'} R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} concluído.`);
   };
 
+  const handleExportBackup = () => {
+    try {
+      const backupData: Record<string, string | null> = {};
+      const keysToBackup = [
+        'nocturne_user',
+        'nocturne_accounts',
+        'nocturne_budget_accounts',
+        'nocturne_transactions',
+        'nocturne_cards',
+        'nocturne_period_active',
+        'nocturne_period_start',
+        'nocturne_period_end',
+        'nocturne_period_total',
+        'nocturne_temp_categories'
+      ];
+      
+      keysToBackup.forEach(key => {
+        backupData[key] = localStorage.getItem(key);
+      });
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const today = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `nocturne_backup_${today}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      triggerToast('Backup exportado com sucesso!');
+    } catch (err) {
+      triggerToast('Erro ao exportar backup.');
+      console.error(err);
+    }
+  };
+
+  const handleImportBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const backupData = JSON.parse(text) as Record<string, string | null>;
+
+        const keysToRestore = [
+          'nocturne_user',
+          'nocturne_accounts',
+          'nocturne_budget_accounts',
+          'nocturne_transactions',
+          'nocturne_cards',
+          'nocturne_period_active',
+          'nocturne_period_start',
+          'nocturne_period_end',
+          'nocturne_period_total',
+          'nocturne_temp_categories'
+        ];
+
+        const hasValidKey = keysToRestore.some(key => key in backupData);
+        if (!hasValidKey) {
+          triggerToast('Arquivo de backup inválido.');
+          return;
+        }
+
+        Object.entries(backupData).forEach(([key, val]) => {
+          if (keysToRestore.includes(key)) {
+            if (val === null) {
+              localStorage.removeItem(key);
+            } else {
+              localStorage.setItem(key, val);
+            }
+          }
+        });
+
+        triggerToast('Dados carregados com sucesso!');
+        
+        if (backupData['nocturne_user']) setUser(JSON.parse(backupData['nocturne_user']!));
+        if (backupData['nocturne_accounts']) setAccounts(JSON.parse(backupData['nocturne_accounts']!));
+        if (backupData['nocturne_budget_accounts']) setBudgetAccounts(JSON.parse(backupData['nocturne_budget_accounts']!));
+        if (backupData['nocturne_transactions']) setTransactions(JSON.parse(backupData['nocturne_transactions']!));
+        if (backupData['nocturne_cards']) setCards(JSON.parse(backupData['nocturne_cards']!));
+        if (backupData['nocturne_temp_categories']) setTempCategories(JSON.parse(backupData['nocturne_temp_categories']!));
+        
+        if (backupData['nocturne_period_active'] !== undefined) setPeriodActive(backupData['nocturne_period_active'] === 'true');
+        if (backupData['nocturne_period_start'] !== undefined) setPeriodStart(backupData['nocturne_period_start'] || '');
+        if (backupData['nocturne_period_end'] !== undefined) setPeriodEnd(backupData['nocturne_period_end'] || '');
+        if (backupData['nocturne_period_total'] !== undefined) setPeriodTotal(backupData['nocturne_period_total'] ? parseFloat(backupData['nocturne_period_total']!) : 0);
+        
+        setActiveScreen('budget');
+      } catch (err) {
+        triggerToast('Falha ao processar arquivo de backup.');
+        console.error(err);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  };
+
   // --- Transaction queries & filters calculation ---
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => {
@@ -1105,6 +1527,69 @@ export default function App() {
     if (hour >= 12 && hour < 18) return 'Boa tarde';
     return 'Boa noite';
   }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-6 text-center" id="loading-screen">
+        <div className="w-10 h-10 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-4" />
+        <p className="text-xs font-mono text-text-muted tracking-wider uppercase">Verificando sessão segura...</p>
+      </div>
+    );
+  }
+
+  if (!firebaseUser) {
+    return (
+      <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-6 text-center select-none" id="welcome-login-screen">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="max-w-md w-full bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-8 shadow-2xl space-y-8 relative overflow-hidden"
+          id="welcome-card"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
+          
+          <div className="flex flex-col items-center space-y-3" id="welcome-brand">
+            <img 
+              src="/favicon.jpg" 
+              alt="Nocturne Logo" 
+              className="w-12 h-12 rounded-2xl shadow-md border border-brand-primary/30 object-cover"
+              referrerPolicy="no-referrer"
+              id="brand-emblem-img"
+            />
+            <span className="text-[10px] text-brand-primary font-mono tracking-widest font-black uppercase">
+              Nocturne
+            </span>
+            <h1 className="text-3xl font-display font-black text-white tracking-tight">
+              Seus Dados na Nuvem
+            </h1>
+          </div>
+
+          <div className="text-left bg-bg-base/50 p-5 rounded-2xl border border-outline-variant/30" id="welcome-intro-block">
+            <p className="text-xs text-text-high leading-relaxed">
+              Utilize sua Conta do Google para salvar, acessar e sincronizar seus dados.
+            </p>
+          </div>
+
+          <div className="space-y-4" id="welcome-action-buttons">
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              className="w-full bg-brand-primary hover:bg-brand-primary/95 border border-brand-primary/20 text-black font-extrabold uppercase text-[10px] tracking-widest py-4 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-3 shadow-lg shadow-brand-primary/10"
+              id="btn-login-google"
+            >
+              <UserIcon size={14} strokeWidth={3} />
+              <span>Entrar com o Google</span>
+            </button>
+            
+            <p className="text-[9px] text-text-muted leading-normal px-2">
+              Nota: Se a janela do Google não abrir por restrições, <a href="#" onClick={(e) => { e.preventDefault(); window.open(window.location.href, '_blank'); }} className="text-brand-primary underline underline-offset-2 font-semibold">clique aqui para abrir o app em nova aba</a>.
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-[100dvh] overflow-hidden bg-bg-base text-text-high font-sans selection:bg-brand-primary/20 flex flex-col justify-between max-w-md mx-auto relative shadow-2xl border-x border-outline-variant/40 md:mt-2 md:rounded-3xl md:h-[95vh] md:max-h-[920px] pb-0 custom-scrollbar" id="web-mobile-container">
@@ -1302,21 +1787,27 @@ export default function App() {
                   return (
                     <div
                       key={t.id}
-                      onClick={() => {
-                        setEditingTransaction(t);
-                        setIsFormOpen(true);
-                      }}
-                      className="flex items-center justify-between p-3.5 bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary/25 rounded-xl transition-all cursor-pointer group"
+                      className="flex items-center justify-between p-3.5 bg-bg-surface-low border border-outline-variant/30 rounded-xl transition-all"
                     >
                       <div className="flex items-center gap-2">
                         <div>
-                          <p className="text-xs font-bold text-text-high group-hover:text-brand-primary transition-colors">{t.description}</p>
+                          <p className="text-xs font-bold text-text-high">{t.description}</p>
                           <p className="text-[10px] text-text-muted font-mono">{t.account} • {t.time}</p>
                         </div>
                       </div>
-                      <span className={`text-xs font-bold ${t.amount >= 0 ? 'text-green-500' : 'text-text-high'}`}>
-                        {t.amount >= 0 ? '+' : '-'} R$ {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-bold ${t.amount >= 0 ? 'text-green-500' : 'text-text-high'}`}>
+                          {t.amount >= 0 ? '+' : '-'} R$ {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                        <button
+                          onClick={(e) => handleEditClick(t, e)}
+                          className="p-1.5 hover:text-brand-primary text-text-muted rounded hover:bg-white/5 transition-all cursor-pointer"
+                          title="Editar"
+                          id={`edit-recent-${t.id}`}
+                        >
+                          <Edit3 size={14} />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1452,15 +1943,11 @@ export default function App() {
                       return (
                         <div
                           key={tx.id}
-                          className="flex items-center justify-between p-4 bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary/20 rounded-xl transition-all duration-150 group cursor-pointer"
-                          onClick={() => {
-                            setEditingTransaction(tx);
-                            setIsFormOpen(true);
-                          }}
+                          className="flex items-center justify-between p-4 bg-bg-surface-low border border-outline-variant/30 rounded-xl transition-all duration-150"
                         >
                           <div className="flex items-center gap-2">
                             <div>
-                              <h4 className="font-bold text-sm text-text-high group-hover:text-white transition-colors">
+                              <h4 className="font-bold text-sm text-text-high transition-colors">
                                 {tx.description}
                               </h4>
                               <p className="text-xs text-text-muted mt-0.5">
@@ -1668,12 +2155,26 @@ export default function App() {
             {/* Header / Summary Card */}
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-lg relative overflow-hidden mb-6" id="contas-summary-header">
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
-              <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block mb-1">
-                Ativo Consolidado
-              </span>
-              <h2 className="text-3xl font-display font-black text-white tracking-tight">
-                R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </h2>
+              <div className="flex justify-between items-center relative z-10">
+                <div className="space-y-1">
+                  <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block">
+                    Ativo Consolidado
+                  </span>
+                  <h2 className="text-3xl font-display font-black text-white tracking-tight">
+                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </h2>
+                </div>
+                
+                <button
+                  type="button"
+                  onClick={() => setIsPatrimonyModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 bg-[#ffe08b]/10 hover:bg-[#ffe08b]/20 border border-[#ffe08b]/30 hover:border-[#ffe08b] text-[#ffe08b] text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-[#ffe08b]/5 shrink-0"
+                  id="btn-open-patrimony-history"
+                >
+                  <History size={13} strokeWidth={2.5} />
+                  Histórico
+                </button>
+              </div>
             </div>
 
             {/* Botão de Cadastrar Nova Conta em popup modal */}
@@ -1902,12 +2403,202 @@ export default function App() {
           </motion.div>
         )}
 
+        {/* TAB 4: CONFIG (CONFIGURAÇÕES E BACKUP) */}
+        {activeScreen === 'config' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col space-y-6 text-left"
+            id="config-screen-view"
+          >
+            {/* Header / Summary Card */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-lg relative overflow-hidden" id="config-summary-header">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
+              <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block mb-1">
+                Central do Sistema
+              </span>
+              <h2 className="text-3xl font-display font-black text-white tracking-tight">
+                Sistema & Dados
+              </h2>
+            </div>
+
+            {/* User Account / Session Profile */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-user-profile-box">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">Conta Conectada</span>
+              </div>
+              
+              <div className="bg-gradient-to-r from-bg-base to-bg-base/60 border border-outline-variant/30 rounded-xl p-3.5 flex items-center justify-between gap-3" id="profile-card-details">
+                <div className="flex items-center gap-3">
+                  {firebaseUser && firebaseUser.photoURL ? (
+                    <img 
+                      src={firebaseUser.photoURL} 
+                      alt={firebaseUser.displayName || 'Avatar'} 
+                      referrerPolicy="no-referrer"
+                      className="w-10 h-10 rounded-full border border-brand-primary/20 object-cover"
+                      id="profile-avatar"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full border border-brand-primary/20 bg-brand-primary/15 text-brand-primary flex items-center justify-center font-bold text-sm" id="profile-avatar-placeholder">
+                      {firebaseUser && firebaseUser.displayName ? firebaseUser.displayName.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                  )}
+                  <div className="text-left">
+                    <h4 className="text-xs font-bold text-white leading-tight">
+                      {firebaseUser ? (firebaseUser.displayName || 'Usuário Google') : 'Usuário Conectado'}
+                    </h4>
+                    <p className="text-[10px] text-text-muted mt-0.5 truncate max-w-[150px]">
+                      {firebaseUser ? firebaseUser.email : ''}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {saveLoading && (
+                    <span className="text-[8px] font-mono text-brand-primary animate-pulse tracking-tight bg-brand-primary/10 px-1.5 py-1 rounded border border-brand-primary/20 shrink-0">
+                      Sincro
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSignOut}
+                    className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-red-500 font-extrabold uppercase text-[8px] tracking-widest px-2.5 py-2 rounded-lg transition-all cursor-pointer shrink-0"
+                    id="btn-signout"
+                  >
+                    Sair
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* App updates block */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-app-updates-box">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                  <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
+                </div>
+                <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
+                  v1.1.0
+                </span>
+              </div>
+
+              {swUpdateAvailable ? (
+                <div className="bg-brand-primary/10 border border-brand-primary/45 rounded-xl p-4 text-center space-y-3" id="update-alert-banner">
+                  <div className="flex items-center justify-center gap-2 text-brand-primary">
+                    <Sparkles size={16} className="animate-pulse" />
+                    <span className="text-xs font-extrabold uppercase tracking-wide text-brand-primary">Nova versão disponível — atualizar agora</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300 leading-normal">
+                    Uma nova versão atualizada do aplicativo foi publicada e está pronta para uso imediato.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleUpdateApp}
+                    className="w-full bg-brand-primary hover:bg-brand-primary/95 text-black font-extrabold uppercase text-[10px] tracking-widest py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 border border-brand-primary/20 shadow-lg shadow-brand-primary/10"
+                    id="btn-update-now"
+                  >
+                    <RefreshCw size={12} className="animate-spin" style={{ animationDuration: '3s' }} />
+                    <span>Atualizar agora</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-bg-base/30 border border-outline-variant/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4" id="no-update-banner">
+                  <div className="text-left space-y-0.5">
+                    <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      App Atualizado
+                    </p>
+                    <p className="text-[10px] text-text-muted">
+                      Nenhuma atualização pendente detectada no momento.
+                    </p>
+                  </div>
+                  
+                  <button
+                    type="button"
+                    disabled={isCheckingUpdate}
+                    onClick={checkServiceWorkerUpdate}
+                    className="bg-white/5 hover:bg-white/10 active:bg-white/20 text-white border border-outline-variant/40 hover:border-outline-variant/60 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                    id="btn-check-sw-update"
+                  >
+                    {isCheckingUpdate ? (
+                      <>
+                        <RefreshCw size={10} className="animate-spin" />
+                        <span>Buscando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={10} />
+                        <span>Verificar</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Config Control Section */}
+            <div className="bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-5 space-y-6" id="config-controls-box">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                  <span className="text-xs font-black text-white uppercase tracking-wider">Exportar Dados</span>
+                </div>
+                <p className="text-[11px] text-text-muted">
+                  Clique no botão abaixo para fazer o download dos dados atuais.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  className="w-full bg-brand-primary hover:bg-brand-primary/80 border border-brand-primary/35 text-black font-extrabold uppercase text-[10px] tracking-widest py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  id="btn-export-backup"
+                >
+                  <Settings size={14} strokeWidth={3} className="rotate-45" /> Exportar Backup
+                </button>
+              </div>
+
+              <div className="h-[1px] bg-outline-variant/20" />
+
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                  <span className="text-xs font-black text-white uppercase tracking-wider">Importar Dados</span>
+                </div>
+                <p className="text-[11px] text-text-muted">
+                  Selecione o arquivo de backup para restaurar os dados.
+                </p>
+                
+                <div className="relative">
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    className="hidden"
+                    id="import-backup-file-input"
+                  />
+                  <label
+                    htmlFor="import-backup-file-input"
+                    className="w-full bg-bg-base hover:bg-bg-base/80 border border-dashed border-outline-variant hover:border-brand-primary/50 text-white font-bold text-[10px] tracking-widest py-5 rounded-2xl transition-all cursor-pointer flex flex-col items-center justify-center gap-2.5"
+                    id="btn-import-backup-label"
+                  >
+                    <Clock size={18} className="text-brand-primary animate-pulse" />
+                    <span className="uppercase">Selecionar Arquivo de Backup</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         </div>
 
         {/* Discrete footer for applet authoring */}
-        <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-          2026 - v1.0.0 - Desenvolvido por Armindo Neto.
-        </div>
+        {activeScreen === 'config' && (
+          <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
+            2026 - v1.1.0 - Desenvolvido por Armindo Neto
+          </div>
+        )}
       </main>
 
       {/* Fixed bottom menu bar with active dynamic states */}
@@ -1943,6 +2634,16 @@ export default function App() {
         >
           <Clock size={18} className={activeScreen === 'temp' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
           <span className="text-[10px] font-black tracking-widest uppercase font-display">TEMP</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveScreen('config')}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'config' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          id="btn-nav-config"
+        >
+          <Settings size={18} className={activeScreen === 'config' ? 'scale-110 text-brand-primary transition-transform rotate-45' : 'transition-transform'} />
+          <span className="text-[10px] font-black tracking-widest uppercase font-display">SYSTEM</span>
         </button>
       </div>
 
@@ -2697,6 +3398,305 @@ export default function App() {
                   id="analysis-close-btn"
                 >
                   FECHAR
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Histórico de Evolução de Patrimônio */}
+      <AnimatePresence>
+        {isPatrimonyModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md" id="patrimony-modal-overlay">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-6 flex flex-col max-h-[85vh] shadow-2xl relative text-left"
+              id="patrimony-modal-content"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-outline-variant/30 pb-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-[#ffe08b]/10 flex items-center justify-center border border-[#ffe08b]/20">
+                    <History className="text-[#ffe08b]" size={16} strokeWidth={2.5} />
+                  </div>
+                  <div>
+                    <h3 className="font-display font-black text-xs tracking-wider text-white uppercase">
+                      Evolução de Patrimônio
+                    </h3>
+                    <p className="text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">
+                      Controle Histórico Consolidado
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPatrimonyModalOpen(false);
+                    setNewPatrimonyMonthYear('');
+                    setNewPatrimonyAmount('');
+                  }}
+                  className="text-text-muted hover:text-white transition-colors cursor-pointer p-1 text-xs"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Gráfico de linha da evolução do patrimônio */}
+              <div className="bg-black/40 rounded-xl border border-outline-variant/30 p-3 mb-4" id="patrimony-chart-card">
+                <span className="block text-[9px] uppercase tracking-widest text-brand-primary font-bold mb-3 font-mono">
+                  Evolução do Patrimônio Acumulado (R$)
+                </span>
+                <div className="w-full h-36">
+                  {patrimonyHistory.length < 2 ? (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] text-text-muted font-mono bg-white/5 rounded-lg border border-outline-variant/10 text-center px-4">
+                      Adicione pelo menos 2 pontos de dados para exibir a linha de evolução histórica.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart 
+                        data={[...patrimonyHistory]
+                          .sort((a, b) => {
+                            const [mA, yA] = a.monthYear.split('/').map(n => parseInt(n, 10));
+                            const [mB, yB] = b.monthYear.split('/').map(n => parseInt(n, 10));
+                            const dateA = new Date(yA < 100 ? 2000 + yA : yA, mA - 1, 1);
+                            const dateB = new Date(yB < 100 ? 2000 + yB : yB, mB - 1, 1);
+                            return dateA.getTime() - dateB.getTime();
+                          })} 
+                        margin={{ top: 10, right: 15, left: -20, bottom: 5 }}
+                      >
+                        <XAxis 
+                          dataKey="monthYear" 
+                          stroke="#71717a" 
+                          fontSize={9} 
+                          tickLine={false} 
+                          axisLine={false} 
+                          tickMargin={6}
+                        />
+                        <YAxis 
+                          stroke="#71717a" 
+                          fontSize={9} 
+                          tickLine={false} 
+                          axisLine={false} 
+                          tickFormatter={(val) => `R$ ${val >= 1000 ? (val/1000) + 'k' : val}`}
+                          tickMargin={6}
+                        />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: '#111318', 
+                            borderColor: '#2d3139', 
+                            borderRadius: '8px',
+                            fontSize: '10px',
+                            color: '#ffffff'
+                          }} 
+                          labelClassName="text-text-muted font-bold"
+                          formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Lançamento']}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="amount" 
+                          stroke="#ffe08b" 
+                          strokeWidth={2.5}
+                          activeDot={{ r: 6 }}
+                          dot={{ r: 4, fill: '#111318', stroke: '#ffe08b', strokeWidth: 2 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
+
+              {/* Botão/Formulário para Inserir Novo Registro */}
+              <div className="space-y-3 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setShowAddPatrimonyForm(prev => !prev)}
+                  className="w-full bg-white/5 hover:bg-white/10 text-white font-bold uppercase text-[9px] tracking-wider py-2.5 rounded-xl border border-outline-variant/30 hover:border-outline-variant/60 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  id="btn-toggle-add-patrimony-form"
+                >
+                  <Plus size={12} />
+                  {showAddPatrimonyForm ? 'Ocultar Lançador de Registro' : 'Inserir Novo Registro Histórico'}
+                </button>
+
+                {showAddPatrimonyForm && (
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!newPatrimonyMonthYear || !newPatrimonyAmount) {
+                        triggerToast('Preencha os campos de mês/ano e valor.');
+                        return;
+                      }
+
+                      const dateRegex = /^(0?[1-9]|1[0-2])\/\d{2,4}$/;
+                      if (!dateRegex.test(newPatrimonyMonthYear)) {
+                        triggerToast('Período inválido. Use o formato Mês/Ano (MM/AAAA, ex: 06/2026).');
+                        return;
+                      }
+
+                      const cleanedVal = newPatrimonyAmount.replace(/\s/g, '').replace('R$', '').replace(/\./g, '').replace(',', '.');
+                      const numericAmount = parseFloat(cleanedVal);
+                      if (isNaN(numericAmount) || numericAmount < 0) {
+                        triggerToast('Insira um valor patrimonial válido maior ou igual a zero.');
+                        return;
+                      }
+
+                      // Create and add
+                      const newEntry: PatrimonyEntry = {
+                        id: `pe-${Date.now()}`,
+                        monthYear: newPatrimonyMonthYear,
+                        amount: numericAmount
+                      };
+
+                      setPatrimonyHistory(prev => {
+                        const filtered = prev.filter(p => p.monthYear !== newPatrimonyMonthYear);
+                        return [...filtered, newEntry];
+                      });
+
+                      setNewPatrimonyMonthYear('');
+                      setNewPatrimonyAmount('');
+                      setShowAddPatrimonyForm(false);
+                      triggerToast('Registro patrimonial adicionado!');
+                    }}
+                    className="bg-black/25 border border-outline-variant/45 rounded-xl p-3.5 space-y-3"
+                    id="add-patrimony-history-form"
+                  >
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Mês/Ano</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="MM/AAAA"
+                          value={newPatrimonyMonthYear}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const digits = value.replace(/\D/g, '');
+                            let formatted = value;
+                            if (digits.length === 2) {
+                              if (value.length === 2) {
+                                formatted = digits + '/';
+                              } else {
+                                formatted = digits;
+                              }
+                            } else if (digits.length > 2) {
+                              formatted = digits.slice(0, 2) + '/' + digits.slice(2, 6);
+                            } else {
+                              formatted = digits;
+                            }
+                            setNewPatrimonyMonthYear(formatted.slice(0, 7));
+                          }}
+                          className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                          id="inp-patrimony-monthyear"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Valor Total (R$)</label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          required
+                          placeholder="0,00"
+                          value={newPatrimonyAmount}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const digits = val.replace(/\D/g, '');
+                            if (!digits) {
+                              setNewPatrimonyAmount('');
+                              return;
+                            }
+                            if (digits.length < 3) {
+                              const parsedNum = parseInt(digits, 10);
+                              setNewPatrimonyAmount(isNaN(parsedNum) ? '' : String(parsedNum));
+                            } else {
+                              const cents = digits.slice(-2);
+                              const whole = digits.slice(0, -2);
+                              const parsedWhole = parseInt(whole, 10);
+                              const formattedWhole = isNaN(parsedWhole) ? '0' : String(parsedWhole);
+                              setNewPatrimonyAmount(`${formattedWhole},${cents}`);
+                            }
+                          }}
+                          className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                          id="inp-patrimony-amount"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      className="w-full bg-brand-primary hover:bg-brand-primary/80 text-black font-extrabold uppercase text-[9px] tracking-widest py-2.5 rounded-lg transition-all cursor-pointer"
+                      id="btn-submit-patrimony"
+                    >
+                      SALVAR
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {/* Título de lista */}
+              <h4 className="text-[10px] uppercase tracking-widest text-[#ffe08b] font-bold mb-2 font-mono flex items-center justify-between">
+                <span>HISTÓRICO DE PATRIMÔNIO</span>
+                <span className="text-[8px] text-text-muted uppercase tracking-normal">Total: {patrimonyHistory.length}</span>
+              </h4>
+
+              {/* Lista em ordem decrescente de data */}
+              <div className="flex-1 overflow-y-auto pr-1 py-1 space-y-2 custom-scrollbar max-h-[25vh]">
+                {patrimonyHistory.length === 0 ? (
+                  <div className="text-center py-8 text-text-muted text-xs">Nenhum registro de patrimônio lançado.</div>
+                ) : (
+                  [...patrimonyHistory]
+                    .sort((a, b) => {
+                      const [mA, yA] = a.monthYear.split('/').map(n => parseInt(n, 10));
+                      const [mB, yB] = b.monthYear.split('/').map(n => parseInt(n, 10));
+                      const dateA = new Date(yA < 100 ? 2000 + yA : yA, mA - 1, 1);
+                      const dateB = new Date(yB < 100 ? 2000 + yB : yB, mB - 1, 1);
+                      return dateB.getTime() - dateA.getTime(); // Descending!
+                    })
+                    .map((item) => (
+                      <div 
+                        key={item.id} 
+                        className="bg-bg-surface-low border border-outline-variant/30 hover:border-outline-variant/60 rounded-xl p-3 flex items-center justify-between transition-all"
+                        id={`patrimony-item-${item.id}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#ffe08b]" />
+                          <span className="text-xs font-bold text-white font-mono">{item.monthYear}</span>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-black text-xs text-white">
+                            R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPatrimonyHistory(prev => prev.filter(p => p.id !== item.id));
+                              triggerToast('Registro de patrimônio removido!');
+                            }}
+                            className="text-text-muted hover:text-red-400 p-1 rounded hover:bg-white/5 transition-all cursor-pointer"
+                            title="Remover ponto de controle"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+
+              {/* Footer close option */}
+              <div className="border-t border-outline-variant/30 pt-4 mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPatrimonyModalOpen(false);
+                    setNewPatrimonyMonthYear('');
+                    setNewPatrimonyAmount('');
+                  }}
+                  className="bg-brand-primary hover:bg-brand-primary/80 border border-brand-primary text-black font-extrabold uppercase text-[10px] tracking-wider px-6 py-2 rounded-xl transition-all cursor-pointer"
+                  id="patrimony-close-btn"
+                >
+                  OK
                 </button>
               </div>
             </motion.div>
