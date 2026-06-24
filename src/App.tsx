@@ -327,7 +327,7 @@ export default function App() {
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => {
     const saved = localStorage.getItem('nocturne_plan_entries');
     const parsed = saved ? JSON.parse(saved) as PlanEntry[] : [];
-    const clearedFlag = localStorage.getItem('nocturne_cards_cleared_v9');
+    const clearedFlag = localStorage.getItem('nocturne_cards_cleared_v10');
     if (!clearedFlag) {
       return parsed.filter(entry => entry.category !== 'cartoes' && !entry.cardId);
     }
@@ -338,14 +338,22 @@ export default function App() {
     return saved ? JSON.parse(saved) : {};
   });
   const [planCards, setPlanCards] = useState<PlanCard[]>(() => {
-    const clearedFlag = localStorage.getItem('nocturne_cards_cleared_v9');
+    const clearedFlag = localStorage.getItem('nocturne_cards_cleared_v10');
     if (!clearedFlag) {
-      localStorage.setItem('nocturne_cards_cleared_v9', 'true');
+      localStorage.setItem('nocturne_cards_cleared_v10', 'true');
       return [];
     }
     const saved = localStorage.getItem('nocturne_plan_cards');
     return saved ? JSON.parse(saved) : [];
   });
+  const [activePlanMonth, setActivePlanMonth] = useState<string>(() => {
+    const saved = localStorage.getItem('nocturne_active_plan_month');
+    return saved || '2026-06';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_active_plan_month', activePlanMonth);
+  }, [activePlanMonth]);
 
   // --- Temporary Information Screen States ---
   const [tempCategories, setTempCategories] = useState<TempCategory[]>(() => {
@@ -553,16 +561,17 @@ export default function App() {
             let finalPlanEntries = data.planEntries || [];
             let finalPlanCards = data.planCards || [];
 
-            if (!data.didClearLegacyCards_v9) {
+            if (!data.didClearLegacyCards_v10) {
               finalPlanCards = [];
               finalPlanEntries = finalPlanEntries.filter((entry: any) => entry.category !== 'cartoes' && !entry.cardId);
-              localStorage.setItem('nocturne_cards_cleared_v9', 'true');
+              localStorage.setItem('nocturne_cards_cleared_v10', 'true');
               triggerToast('Banco de cartões planejado resetado com sucesso!');
             }
 
             setPlanEntries(finalPlanEntries);
             if (data.planIncomes) setPlanIncomes(data.planIncomes);
             setPlanCards(finalPlanCards);
+            if (data.activePlanMonth !== undefined) setActivePlanMonth(data.activePlanMonth);
           } else {
             // Document doesn't exist, migrate or initialize
             const initialSyncData = {
@@ -580,8 +589,10 @@ export default function App() {
               planEntries,
               planIncomes,
               planCards,
+              activePlanMonth,
               didClearLegacyCards_v8: true,
-              didClearLegacyCards_v9: true
+              didClearLegacyCards_v9: true,
+              didClearLegacyCards_v10: true
             };
             try {
               await setDoc(docRef, JSON.parse(JSON.stringify(initialSyncData)));
@@ -687,8 +698,10 @@ export default function App() {
           planEntries,
           planIncomes,
           planCards,
+          activePlanMonth,
           didClearLegacyCards_v8: true,
-          didClearLegacyCards_v9: true
+          didClearLegacyCards_v9: true,
+          didClearLegacyCards_v10: true
         };
         try {
           await setDoc(docRef, JSON.parse(JSON.stringify(dataToSave)));
@@ -2631,6 +2644,8 @@ export default function App() {
               setPlanCards={setPlanCards}
               triggerToast={triggerToast}
               accounts={accounts}
+              activePlanMonth={activePlanMonth}
+              setActivePlanMonth={setActivePlanMonth}
             />
           </motion.div>
         )}

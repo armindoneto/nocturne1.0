@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -21,6 +21,17 @@ const MONTH_NAMES = [
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
+const monthToNum = (m: string): number => {
+  const [y, mm] = m.split('-').map(Number);
+  return y * 12 + mm;
+};
+
+const numToMonth = (num: number): string => {
+  const y = Math.floor((num - 1) / 12);
+  const mm = (num - 1) % 12 + 1;
+  return `${y}-${mm < 10 ? '0' + mm : mm}`;
+};
+
 export default function PlanScreen({
   planEntries,
   setPlanEntries,
@@ -29,10 +40,56 @@ export default function PlanScreen({
   planCards,
   setPlanCards,
   triggerToast,
-  accounts
+  accounts,
+  activePlanMonth = '2026-06',
+  setActivePlanMonth
 }: PlanScreenProps) {
-  // Use "2026-06" as base default starting month
-  const [currentMonth, setCurrentMonth] = useState('2026-06');
+  // Use activePlanMonth as base default starting month
+  const [currentMonth, setCurrentMonth] = useState(activePlanMonth);
+  
+  // Keep currentMonth in sync with loaded activePlanMonth
+  useEffect(() => {
+    if (activePlanMonth) {
+      setCurrentMonth(activePlanMonth);
+    }
+  }, [activePlanMonth]);
+
+  // Recursively or iteratively calculate the projected balance of accounts starting from the Active Month
+  const getAccountBalanceProjection = (accountId: string, monthStr: string) => {
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) return { start: 0, end: 0 };
+
+    const startMonthNum = monthToNum(activePlanMonth || '2026-06');
+    const targetMonthNum = monthToNum(monthStr);
+
+    if (targetMonthNum < startMonthNum) {
+      const targetEntries = planEntries.filter(e => e.month === monthStr && e.category === 'contas' && e.accountId === accountId);
+      const incomes = targetEntries.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
+      const expenses = targetEntries.filter(e => e.type !== 'income').reduce((sum, e) => sum + e.amount, 0);
+      return {
+        start: account.balance,
+        end: account.balance - incomes + expenses
+      };
+    }
+
+    let currentBal = account.balance;
+    for (let m = startMonthNum; m <= targetMonthNum; m++) {
+      const mStr = numToMonth(m);
+      const targetEntries = planEntries.filter(e => e.month === mStr && e.category === 'contas' && e.accountId === accountId);
+      const incomes = targetEntries.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
+      const expenses = targetEntries.filter(e => e.type !== 'income').reduce((sum, e) => sum + e.amount, 0);
+
+      if (m === targetMonthNum) {
+        return {
+          start: currentBal,
+          end: currentBal - incomes + expenses
+        };
+      }
+      currentBal = currentBal - incomes + expenses;
+    }
+
+    return { start: currentBal, end: currentBal };
+  };
   
   // Inline/Modal states
   const [editingIncomeMonth, setEditingIncomeMonth] = useState<string | null>(null);
@@ -534,7 +591,7 @@ export default function PlanScreen({
     setPlanCards(prev => prev.map(c => {
       if (c.id === id) {
         const excluded = c.excludedMonths || [];
-        const updatedMonths = c.months ? c.months.filter(m => m !== month) : undefined;
+        const updatedMonths = c.months ? c.months.filter(m => m !== month) : [];
         return {
           ...c,
           excludedMonths: excluded.includes(month) ? excluded : [...excluded, month],
@@ -579,14 +636,36 @@ export default function PlanScreen({
 
     const columnContent = (
       <>
-        {/* MONTH HEADER FOR COLUMN (shows month name) - ONLY FOR DESKTOP */}
-        {isDesktop && (
-          <div className="flex items-center justify-between bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 shadow-sm" id={`plan-month-header-${monthStr}`}>
-            <span className="text-xs font-black uppercase tracking-widest text-brand-primary font-display">
-              {formatMonthName(monthStr)}
-            </span>
+        {/* MONTH HEADER FOR COLUMN (shows month name and Active Month toggle) */}
+        <div className="flex items-center justify-between bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 shadow-sm" id={`plan-month-header-${monthStr}`}>
+          <span className="text-xs font-black uppercase tracking-widest text-brand-primary font-display">
+            {formatMonthName(monthStr)}
+          </span>
+
+          {/* Active Month Status & Button */}
+          <div className="flex items-center gap-2">
+            {activePlanMonth === monthStr ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Mês Ativo</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  if (setActivePlanMonth) {
+                    setActivePlanMonth(monthStr);
+                    setCurrentMonth(monthStr);
+                    triggerToast(`"${formatMonthName(monthStr)}" definido como Mês Ativo!`);
+                  }
+                }}
+                className="px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-white/10 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                id={`btn-set-active-month-${monthStr}`}
+              >
+                Definir Ativo
+              </button>
+            )}
           </div>
-        )}
+        </div>
 
         {/* 2. RESUMO PANEL (BALANÇO, ENTRADA, GASTOS) */}
         <div className="grid grid-cols-3 gap-2.5" id={`plan-summary-grid-${monthStr}`}>
@@ -1013,9 +1092,7 @@ export default function PlanScreen({
               accounts.map(account => {
                 const accountTotal = getAccountTotal(account.id);
                 const accEntries = contasEntries.filter(e => e.accountId === account.id);
-                const accIncomes = accEntries.filter(e => e.type === 'income').reduce((sum, e) => sum + e.amount, 0);
-                const accExpenses = accEntries.filter(e => e.type !== 'income').reduce((sum, e) => sum + e.amount, 0);
-                const updatedBalance = account.balance - accIncomes + accExpenses;
+                const { start: projectedStart, end: projectedEnd } = getAccountBalanceProjection(account.id, monthStr);
 
                 return (
                   <div key={account.id} className="border border-emerald-500/10 rounded-xl p-3 bg-emerald-950/5 space-y-4" id={`account-block-${account.id}-${monthStr}`}>
@@ -1054,14 +1131,14 @@ export default function PlanScreen({
                     <div className="grid grid-cols-2 gap-2 bg-black/15 p-2 rounded-lg border border-white/5" id={`account-balance-info-${account.id}-${monthStr}`}>
                       <div className="flex flex-col">
                         <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider">Saldo Atual</span>
-                        <span className="text-xs font-mono font-bold text-white mt-0.5">{formatBRL(account.balance)}</span>
+                        <span className="text-xs font-mono font-bold text-white mt-0.5">{formatBRL(projectedStart)}</span>
                       </div>
                       <div className="flex flex-col items-end text-right">
                         <span className="text-[9px] text-text-muted font-bold uppercase tracking-wider">
                           PROJEÇÃO
                         </span>
-                        <span className={`text-xs font-mono font-bold mt-0.5 ${updatedBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {formatBRL(updatedBalance)}
+                        <span className={`text-xs font-mono font-bold mt-0.5 ${projectedEnd >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {formatBRL(projectedEnd)}
                         </span>
                       </div>
                     </div>
@@ -1161,11 +1238,18 @@ export default function PlanScreen({
           <ChevronLeft size={20} />
         </button>
 
-        <span className="text-sm font-black uppercase tracking-widest text-white font-display flex items-center gap-2" id="plan-current-month-label">
-          <span>{formatMonthName(currentMonth)}</span>
-          <span className="hidden lg:inline text-brand-primary">
-            → {formatMonthName(getNextMonth(currentMonth))} → {formatMonthName(getNextMonth(getNextMonth(currentMonth)))}
-          </span>
+        <span className="text-sm font-black uppercase tracking-widest text-white font-display flex flex-col items-center gap-1" id="plan-current-month-label">
+          <div className="flex items-center gap-2">
+            <span>{formatMonthName(currentMonth)}</span>
+            <span className="hidden lg:inline text-brand-primary">
+              → {formatMonthName(getNextMonth(currentMonth))} → {formatMonthName(getNextMonth(getNextMonth(currentMonth)))}
+            </span>
+          </div>
+          {activePlanMonth && (
+            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 mt-0.5">
+              Mês Ativo: {formatMonthName(activePlanMonth)}
+            </span>
+          )}
         </span>
 
         <button

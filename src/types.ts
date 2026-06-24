@@ -91,5 +91,7 @@ export interface PlanScreenProps {
   setPlanCards: (value: PlanCard[] | ((prev: PlanCard[]) => PlanCard[])) => void;
   triggerToast: (msg: string) => void;
   accounts: Account[];
+  activePlanMonth?: string;
+  setActivePlanMonth?: (value: string | ((prev: string) => string)) => void;
 }
 
