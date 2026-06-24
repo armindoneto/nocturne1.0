@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 // Configuration from firebase-applet-config.json
 const firebaseConfig = {
@@ -19,9 +19,11 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Initialize Firestore (using specific databaseId from config if provided)
+// Initialize Firestore with experimentalForceLongPolling to prevent iframe connection issues
 const databaseId = "ai-studio-f3a3882b-0be0-494d-af2f-84e550953be1";
-export const db = getFirestore(app, databaseId);
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true
+}, databaseId);
 
 export { signInWithPopup, signOut, onAuthStateChanged };
 export type { User as FirebaseUser };

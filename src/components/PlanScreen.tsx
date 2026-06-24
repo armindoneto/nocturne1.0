@@ -122,6 +122,19 @@ export default function PlanScreen({
   // Card Deletion modal confirmation state
   const [cardToDelete, setCardToDelete] = useState<{ id: string; name: string; month: string } | null>(null);
 
+  // Payment Checklist popup states
+  const [isPaymentPopupOpen, setIsPaymentPopupOpen] = useState(false);
+  const [paymentPopupMonth, setPaymentPopupMonth] = useState<string | null>(null);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
+  const [paidEntryIds, setPaidEntryIds] = useState<string[]>([]);
+
+  const handleOpenPaymentPopup = (monthStr: string) => {
+    setPaymentPopupMonth(monthStr);
+    setSelectedEntryIds([]);
+    setPaidEntryIds([]);
+    setIsPaymentPopupOpen(true);
+  };
+
   // Helpers to handle month changes
   const getPrevMonth = (monthStr: string): string => {
     const [yearStr, monthNumStr] = monthStr.split('-');
@@ -638,9 +651,20 @@ export default function PlanScreen({
       <>
         {/* MONTH HEADER FOR COLUMN (shows month name and Active Month toggle) */}
         <div className="flex items-center justify-between bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 shadow-sm" id={`plan-month-header-${monthStr}`}>
-          <span className="text-xs font-black uppercase tracking-widest text-brand-primary font-display">
-            {formatMonthName(monthStr)}
-          </span>
+          {activePlanMonth === monthStr ? (
+            <button
+              onClick={() => handleOpenPaymentPopup(monthStr)}
+              className="text-xs font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none text-left underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
+              title="Clique para abrir controle de pagamentos do Mês Ativo"
+              id={`btn-open-payment-column-${monthStr}`}
+            >
+              {formatMonthName(monthStr)}
+            </button>
+          ) : (
+            <span className="text-xs font-black uppercase tracking-widest text-brand-primary font-display">
+              {formatMonthName(monthStr)}
+            </span>
+          )}
 
           {/* Active Month Status & Button */}
           <div className="flex items-center gap-2">
@@ -1239,17 +1263,48 @@ export default function PlanScreen({
         </button>
 
         <span className="text-sm font-black uppercase tracking-widest text-white font-display flex flex-col items-center gap-1" id="plan-current-month-label">
-          <div className="flex items-center gap-2">
-            <span>{formatMonthName(currentMonth)}</span>
-            <span className="hidden lg:inline text-brand-primary">
-              → {formatMonthName(getNextMonth(currentMonth))} → {formatMonthName(getNextMonth(getNextMonth(currentMonth)))}
+          <div className="flex items-center gap-2 flex-wrap justify-center">
+            {activePlanMonth === currentMonth ? (
+              <button
+                onClick={() => handleOpenPaymentPopup(currentMonth)}
+                className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
+                title="Clique para abrir controle de pagamentos do Mês Ativo"
+                id="btn-trigger-payment-popup-selector"
+              >
+                {formatMonthName(currentMonth)}
+              </button>
+            ) : (
+              <span>{formatMonthName(currentMonth)}</span>
+            )}
+
+            <span className="hidden lg:inline text-brand-primary flex items-center gap-2">
+              <span>→</span>
+              {activePlanMonth === getNextMonth(currentMonth) ? (
+                <button
+                  onClick={() => handleOpenPaymentPopup(getNextMonth(currentMonth))}
+                  className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
+                  title="Clique para abrir controle de pagamentos do Mês Ativo"
+                >
+                  {formatMonthName(getNextMonth(currentMonth))}
+                </button>
+              ) : (
+                <span>{formatMonthName(getNextMonth(currentMonth))}</span>
+              )}
+
+              <span>→</span>
+              {activePlanMonth === getNextMonth(getNextMonth(currentMonth)) ? (
+                <button
+                  onClick={() => handleOpenPaymentPopup(getNextMonth(getNextMonth(currentMonth)))}
+                  className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
+                  title="Clique para abrir controle de pagamentos do Mês Ativo"
+                >
+                  {formatMonthName(getNextMonth(getNextMonth(currentMonth)))}
+                </button>
+              ) : (
+                <span>{formatMonthName(getNextMonth(getNextMonth(currentMonth)))}</span>
+              )}
             </span>
           </div>
-          {activePlanMonth && (
-            <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 mt-0.5">
-              Mês Ativo: {formatMonthName(activePlanMonth)}
-            </span>
-          )}
         </span>
 
         <button
@@ -1488,6 +1543,228 @@ export default function PlanScreen({
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
+
+      {/* 7. TEMPORARY PAYMENT POPUP MODAL */}
+      <AnimatePresence>
+        {isPaymentPopupOpen && paymentPopupMonth && (() => {
+          const popupCalculations = getMonthCalculations(paymentPopupMonth);
+          const monthlyEntries = planEntries.filter(entry => entry.month === paymentPopupMonth);
+          const visibleCards = planCards.filter(card => {
+            const isExcluded = card.excludedMonths?.includes(paymentPopupMonth);
+            if (isExcluded) return false;
+            if (card.months !== undefined) {
+              return card.months.includes(paymentPopupMonth);
+            }
+            return true;
+          });
+          const activeEntries = monthlyEntries.filter(entry => entry.category !== 'cartoes' || !entry.cardId || visibleCards.some(vc => vc.id === entry.cardId));
+
+          const selectedSum = activeEntries
+            .filter(e => selectedEntryIds.includes(e.id))
+            .reduce((sum, e) => sum + e.amount, 0);
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm shadow-2xl" id="payment-popup-overlay">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-6 w-full max-w-xl max-h-[85vh] flex flex-col relative space-y-4 shadow-2xl text-left"
+                id="payment-popup-content"
+              >
+                {/* Header */}
+                <div className="flex justify-between items-start border-b border-outline-variant/30 pb-3">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                      PAGAMENTO
+                    </h3>
+                    <p className="text-[10px] text-brand-primary mt-0.5 uppercase tracking-wide font-bold">
+                      Mês Ativo: {formatMonthName(paymentPopupMonth)}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setIsPaymentPopupOpen(false)}
+                    className="text-text-muted hover:text-white p-1 rounded-full hover:bg-white/5 cursor-pointer"
+                    id="btn-close-payment-popup"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {/* Checklist Content */}
+                <div 
+                  className="flex-1 overflow-y-auto pr-1.5 space-y-2 min-h-[220px] max-h-[380px] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20" 
+                  id="payment-popup-list-container"
+                >
+                  {activeEntries.length === 0 ? (
+                    <div className="text-center py-10 text-text-muted text-xs">
+                      Nenhum lançamento planejado para este mês.
+                    </div>
+                  ) : (
+                    activeEntries.map(entry => {
+                      const isSelected = selectedEntryIds.includes(entry.id);
+                      const isPaid = paidEntryIds.includes(entry.id);
+
+                      // Get nice category label & badges
+                      let categoryLabel = 'Gastos';
+                      let badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+                      let originName = entry.subcategory;
+
+                      if (entry.category === 'cartoes') {
+                        categoryLabel = 'Cartões';
+                        badgeColor = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+                        const card = planCards.find(c => c.id === entry.cardId);
+                        originName = card ? `${card.name} (${entry.subcategory})` : entry.subcategory;
+                      } else if (entry.category === 'contas') {
+                        categoryLabel = 'Contas';
+                        badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                        const acc = accounts.find(a => a.id === entry.accountId);
+                        originName = acc ? `${acc.name}` : entry.subcategory;
+                      }
+
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                            isPaid 
+                              ? 'bg-black/30 border-white/5 opacity-50' 
+                              : isSelected
+                              ? 'bg-brand-primary/10 border-brand-primary/35'
+                              : 'bg-white/5 border-white/5 hover:border-white/10'
+                          }`}
+                          id={`payment-row-${entry.id}`}
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            {/* Sleek Custom Checkbox for selection (sum) */}
+                            <button
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedEntryIds(prev => prev.filter(id => id !== entry.id));
+                                } else {
+                                  setSelectedEntryIds(prev => [...prev, entry.id]);
+                                }
+                              }}
+                              className={`w-4 h-4 rounded flex items-center justify-center transition-all border cursor-pointer focus:outline-none ${
+                                isSelected 
+                                  ? 'bg-brand-primary border-brand-primary text-black' 
+                                  : 'bg-black/40 border-white/20 hover:border-brand-primary/60 text-transparent'
+                              }`}
+                              title="Selecionar para somatório"
+                              id={`check-select-${entry.id}`}
+                            >
+                              {isSelected && (
+                                <svg className="w-2.5 h-2.5 stroke-[3.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                </svg>
+                              )}
+                            </button>
+
+                            {/* Entry Details */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-xs font-bold text-text-high truncate ${isPaid ? 'line-through decoration-rose-500/80 text-text-muted' : ''}`}>
+                                  {entry.name}
+                                </span>
+                                {entry.type === 'income' && (
+                                  <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                                    Receita
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-1 text-[9px] uppercase tracking-wider text-text-muted font-semibold flex-wrap">
+                                <span className={`px-1.5 py-0.5 rounded-full border ${badgeColor}`}>
+                                  {categoryLabel}
+                                </span>
+                                <span className="text-text-muted/60">•</span>
+                                <span className="truncate max-w-[150px]">{originName}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Right Side: Value & Custom Mark as Paid pill */}
+                          <div className="flex items-center gap-4">
+                            <span className={`text-xs font-mono font-bold whitespace-nowrap ${
+                              isPaid 
+                                ? 'line-through decoration-rose-500/80 text-text-muted/50' 
+                                : entry.type === 'income' 
+                                ? 'text-emerald-400' 
+                                : 'text-rose-400'
+                            }`}>
+                              {entry.type === 'income' ? '+' : '-'} {formatBRL(entry.amount)}
+                            </span>
+
+                            {/* Sleek Custom Button for Paid toggle */}
+                            <button
+                              onClick={() => {
+                                if (isPaid) {
+                                  setPaidEntryIds(prev => prev.filter(id => id !== entry.id));
+                                } else {
+                                  setPaidEntryIds(prev => [...prev, entry.id]);
+                                }
+                              }}
+                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all duration-200 text-left focus:outline-none cursor-pointer ${
+                                isPaid 
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 shadow-sm shadow-emerald-500/5' 
+                                  : 'bg-white/5 border-white/10 text-text-muted hover:border-white/20 hover:bg-white/10'
+                              }`}
+                              title="Marcar como Pago"
+                              id={`check-paid-${entry.id}`}
+                            >
+                              <div className={`w-2.5 h-2.5 rounded-full flex items-center justify-center border transition-all ${
+                                isPaid ? 'bg-emerald-400 border-emerald-400' : 'border-white/30'
+                              }`}>
+                                {isPaid && (
+                                  <div className="w-1 h-1 rounded-full bg-black" />
+                                )}
+                              </div>
+                              <span className="text-[9px] font-bold uppercase tracking-wider">
+                                Pago
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Compact Calculation / Footer Section */}
+                <div className="bg-black/30 border border-outline-variant/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-inner" id="payment-popup-footer">
+                  <div className="flex flex-col text-center sm:text-left">
+                    <span className="text-[9px] text-text-muted uppercase tracking-wider font-bold">
+                      Somatório dos Itens Selecionados ({selectedEntryIds.length})
+                    </span>
+                    <span className="text-xs font-mono font-bold text-white mt-0.5">
+                      Total: <span className="text-brand-primary">{formatBRL(selectedSum)}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex gap-1.5 w-full sm:w-auto justify-end">
+                    <button
+                      onClick={() => {
+                        setSelectedEntryIds([]);
+                        setPaidEntryIds([]);
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-white/10 hover:bg-white/5 text-text-muted hover:text-white transition-colors cursor-pointer"
+                      id="btn-payment-popup-reset"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      onClick={() => setIsPaymentPopupOpen(false)}
+                      className="px-3 py-1.5 rounded-xl text-[10px] font-bold bg-brand-primary text-black hover:bg-brand-accent transition-all cursor-pointer"
+                      id="btn-payment-popup-done"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </div>
+
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
     </div>
