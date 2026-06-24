@@ -14,7 +14,7 @@ export const INITIAL_USER: UserProfile = {
 
 export const INITIAL_ACCOUNTS: Account[] = [
   { id: '1', name: 'Æternum', balance: 0.00 },
-  { id: '2', name: 'Repo Nu', balance: 0.00 },
+  { id: '2', name: 'PIX', balance: 0.00 },
   { id: '3', name: 'Nubank', balance: 0.00 },
   { id: '4', name: 'Pai', balance: 0.00 },
   { id: '5', name: 'Mercado Livre', balance: 0.00 },
@@ -87,7 +87,7 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
     amount: -89.90,
     date: '2026-10-19',
     time: '18:30',
-    account: 'Repo Nu',
+    account: 'PIX',
     category: 'Saúde',
     status: 'processado'
   }
@@ -139,7 +139,7 @@ export const CATEGORIES_WITH_ICONS = [
 
 export const AVAILABLE_ACCOUNTS = [
   'Æternum',
-  'Repo Nu',
+  'PIX',
   'Nubank',
   'Pai',
   'Mercado Livre'

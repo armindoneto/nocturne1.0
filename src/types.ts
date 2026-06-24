@@ -58,4 +58,38 @@ export interface PatrimonyEntry {
   amount: number;
 }
 
+export interface PlanCard {
+  id: string;
+  name: string;
+  excludedMonths?: string[]; // "YYYY-MM" where this card has been removed
+  months?: string[]; // "YYYY-MM" months where this card is active
+}
+
+export interface PlanEntry {
+  id: string;
+  name: string;
+  amount: number;
+  month: string; // "YYYY-MM"
+  category: 'gastos' | 'cartoes' | 'contas';
+  cardId?: string; // only if category === 'cartoes'
+  accountId?: string; // only if category === 'contas'
+  subcategory: string; // 'CASA' | 'FIXOS' | 'GERAL' for 'gastos', or 'PARCELAS' | 'FIXOS' | 'GERAL' for 'cartoes', or account name/id for 'contas'
+  type?: 'expense' | 'income'; // 'expense' by default, or 'income' for revenue
+  isInstallment?: boolean;
+  installmentsCount?: number;
+  currentInstallment?: number;
+}
+
 export type ActiveTab = 'inicio' | 'transacoes' | 'cartoes' | 'perfil';
+
+export interface PlanScreenProps {
+  planEntries: PlanEntry[];
+  setPlanEntries: (value: PlanEntry[] | ((prev: PlanEntry[]) => PlanEntry[])) => void;
+  planIncomes: { [month: string]: number };
+  setPlanIncomes: (value: { [month: string]: number } | ((prev: { [month: string]: number }) => { [month: string]: number })) => void;
+  planCards: PlanCard[];
+  setPlanCards: (value: PlanCard[] | ((prev: PlanCard[]) => PlanCard[])) => void;
+  triggerToast: (msg: string) => void;
+  accounts: Account[];
+}
+

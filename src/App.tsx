@@ -45,7 +45,7 @@ import {
   History
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry } from './types';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
 import type { FirebaseUser } from './firebase';
@@ -60,6 +60,7 @@ import {
 } from './data';
 import TransactionForm from './components/TransactionForm';
 import CardItem from './components/CardItem';
+import PlanScreen from './components/PlanScreen';
 
 export const ACCOUNT_COLORS = [
   { value: 'brand-primary', label: 'Dourado', bgClass: 'bg-brand-primary' },
@@ -179,6 +180,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoadedFromFirestore, setDataLoadedFromFirestore] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   // --- Service Worker & Update States ---
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -205,7 +207,13 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Account[];
-        return parsed.map(acc => acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc);
+        return parsed.map(acc => {
+          let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
+          if (updated.name === 'Repo Nu') {
+            updated = { ...updated, name: 'PIX' };
+          }
+          return updated;
+        });
       } catch (_) {}
     }
     return INITIAL_ACCOUNTS;
@@ -216,9 +224,10 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Account[];
-        const requiredNames = ['Æternum', 'Repo Nu', 'Nubank', 'Pai', 'Mercado Livre'];
+        const mapped = parsed.map(a => a.name === 'Repo Nu' ? { ...a, name: 'PIX' } : a);
+        const requiredNames = ['Æternum', 'PIX', 'Nubank', 'Pai', 'Mercado Livre'];
         return requiredNames.map((name, index) => {
-          const found = parsed.find(a => a.name === name);
+          const found = mapped.find(a => a.name === name);
           return {
             id: found ? found.id : `b${index + 1}`,
             name,
@@ -229,7 +238,7 @@ export default function App() {
     }
     return [
       { id: 'b1', name: 'Æternum', balance: 0.00 },
-      { id: 'b2', name: 'Repo Nu', balance: 0.00 },
+      { id: 'b2', name: 'PIX', balance: 0.00 },
       { id: 'b3', name: 'Nubank', balance: 0.00 },
       { id: 'b4', name: 'Pai', balance: 0.00 },
       { id: 'b5', name: 'Mercado Livre', balance: 0.00 },
@@ -241,7 +250,13 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved) as Transaction[];
-        return parsed.map(tx => tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx);
+        return parsed.map(tx => {
+          let updated = tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx;
+          if (updated.account === 'Repo Nu') {
+            updated = { ...updated, account: 'PIX' };
+          }
+          return updated;
+        });
       } catch (_) {}
     }
     return INITIAL_TRANSACTIONS;
@@ -291,7 +306,7 @@ export default function App() {
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'temp' | 'config'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config'>('budget');
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountBalance, setNewAccountBalance] = useState('');
   const [newAccountColor, setNewAccountColor] = useState<string>('brand-primary');
@@ -307,6 +322,30 @@ export default function App() {
   const [editAccountBalance, setEditAccountBalance] = useState('');
   const [editAccountColor, setEditAccountColor] = useState<string>('brand-primary');
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
+
+  // --- Plan/Budget Planning Screen States ---
+  const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_plan_entries');
+    const parsed = saved ? JSON.parse(saved) as PlanEntry[] : [];
+    const clearedFlag = localStorage.getItem('nocturne_cards_cleared_v9');
+    if (!clearedFlag) {
+      return parsed.filter(entry => entry.category !== 'cartoes' && !entry.cardId);
+    }
+    return parsed;
+  });
+  const [planIncomes, setPlanIncomes] = useState<{ [month: string]: number }>(() => {
+    const saved = localStorage.getItem('nocturne_plan_incomes');
+    return saved ? JSON.parse(saved) : {};
+  });
+  const [planCards, setPlanCards] = useState<PlanCard[]>(() => {
+    const clearedFlag = localStorage.getItem('nocturne_cards_cleared_v9');
+    if (!clearedFlag) {
+      localStorage.setItem('nocturne_cards_cleared_v9', 'true');
+      return [];
+    }
+    const saved = localStorage.getItem('nocturne_plan_cards');
+    return saved ? JSON.parse(saved) : [];
+  });
 
   // --- Temporary Information Screen States ---
   const [tempCategories, setTempCategories] = useState<TempCategory[]>(() => {
@@ -412,6 +451,18 @@ export default function App() {
     localStorage.setItem('nocturne_temp_categories', JSON.stringify(tempCategories));
   }, [tempCategories]);
 
+  useEffect(() => {
+    localStorage.setItem('nocturne_plan_entries', JSON.stringify(planEntries));
+  }, [planEntries]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_plan_incomes', JSON.stringify(planIncomes));
+  }, [planIncomes]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_plan_cards', JSON.stringify(planCards));
+  }, [planCards]);
+
   // --- Firebase Authenticated Sync & Listeners ---
   const handleFirestoreError = (error: unknown, operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write', path: string | null) => {
     const errInfo = {
@@ -445,7 +496,22 @@ export default function App() {
           let docSnap;
           try {
             docSnap = await getDoc(docRef);
+            setIsOffline(false);
           } catch (getErr) {
+            const isConnErr = getErr instanceof Error && (
+              getErr.message.includes('unavailable') || 
+              getErr.message.includes('Could not reach Cloud Firestore') ||
+              getErr.message.includes('offline') ||
+              getErr.message.includes('Failed to get document because the client is offline')
+            );
+            if (isConnErr) {
+              console.warn("Firestore backend is unreachable. Operating in Offline Mode.");
+              setIsOffline(true);
+              setDataLoadedFromFirestore(false);
+              setAuthLoading(false);
+              triggerToast('Modo Offline: Operando com dados locais.');
+              return;
+            }
             handleFirestoreError(getErr, 'get', pathStr);
             return;
           }
@@ -453,9 +519,30 @@ export default function App() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             if (data.user) setUser(data.user);
-            if (data.accounts) setAccounts(data.accounts);
-            if (data.budgetAccounts) setBudgetAccounts(data.budgetAccounts);
-            if (data.transactions) setTransactions(data.transactions);
+            if (data.accounts) {
+              const loadedAccs = (data.accounts as Account[]).map(acc => {
+                let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
+                if (updated.name === 'Repo Nu') {
+                  updated = { ...updated, name: 'PIX' };
+                }
+                return updated;
+              });
+              setAccounts(loadedAccs);
+            }
+            if (data.budgetAccounts) {
+              const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
+              setBudgetAccounts(loadedBudgetAccs);
+            }
+            if (data.transactions) {
+              const loadedTxs = (data.transactions as Transaction[]).map(tx => {
+                let updated = tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx;
+                if (updated.account === 'Repo Nu') {
+                  updated = { ...updated, account: 'PIX' };
+                }
+                return updated;
+              });
+              setTransactions(loadedTxs);
+            }
             if (data.cards) setCards(data.cards);
             if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
             if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
@@ -463,6 +550,19 @@ export default function App() {
             if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
             if (data.tempCategories) setTempCategories(data.tempCategories);
             if (data.patrimonyHistory) setPatrimonyHistory(data.patrimonyHistory);
+            let finalPlanEntries = data.planEntries || [];
+            let finalPlanCards = data.planCards || [];
+
+            if (!data.didClearLegacyCards_v9) {
+              finalPlanCards = [];
+              finalPlanEntries = finalPlanEntries.filter((entry: any) => entry.category !== 'cartoes' && !entry.cardId);
+              localStorage.setItem('nocturne_cards_cleared_v9', 'true');
+              triggerToast('Banco de cartões planejado resetado com sucesso!');
+            }
+
+            setPlanEntries(finalPlanEntries);
+            if (data.planIncomes) setPlanIncomes(data.planIncomes);
+            setPlanCards(finalPlanCards);
           } else {
             // Document doesn't exist, migrate or initialize
             const initialSyncData = {
@@ -476,11 +576,30 @@ export default function App() {
               periodEnd,
               periodTotal,
               tempCategories,
-              patrimonyHistory
+              patrimonyHistory,
+              planEntries,
+              planIncomes,
+              planCards,
+              didClearLegacyCards_v8: true,
+              didClearLegacyCards_v9: true
             };
             try {
               await setDoc(docRef, JSON.parse(JSON.stringify(initialSyncData)));
+              setIsOffline(false);
             } catch (writeErr) {
+              const isConnErr = writeErr instanceof Error && (
+                writeErr.message.includes('unavailable') || 
+                writeErr.message.includes('Could not reach Cloud Firestore') ||
+                writeErr.message.includes('offline')
+              );
+              if (isConnErr) {
+                console.warn("Firestore backend is unreachable during init. Operating in Offline Mode.");
+                setIsOffline(true);
+                setDataLoadedFromFirestore(false);
+                setAuthLoading(false);
+                triggerToast('Modo Offline: Operando com dados locais.');
+                return;
+              }
               handleFirestoreError(writeErr, 'write', pathStr);
               return;
             }
@@ -500,6 +619,49 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Proactive runtime migration for 'Repo Nu' -> 'PIX'
+  useEffect(() => {
+    let changed = false;
+    const updatedAccounts = accounts.map(acc => {
+      if (acc.name === 'Repo Nu') {
+        changed = true;
+        return { ...acc, name: 'PIX' };
+      }
+      return acc;
+    });
+    if (changed) {
+      setAccounts(updatedAccounts);
+    }
+  }, [accounts]);
+
+  useEffect(() => {
+    let changed = false;
+    const updatedBudgetAccounts = budgetAccounts.map(acc => {
+      if (acc.name === 'Repo Nu') {
+        changed = true;
+        return { ...acc, name: 'PIX' };
+      }
+      return acc;
+    });
+    if (changed) {
+      setBudgetAccounts(updatedBudgetAccounts);
+    }
+  }, [budgetAccounts]);
+
+  useEffect(() => {
+    let changed = false;
+    const updatedTxs = transactions.map(tx => {
+      if (tx.account === 'Repo Nu') {
+        changed = true;
+        return { ...tx, account: 'PIX' };
+      }
+      return tx;
+    });
+    if (changed) {
+      setTransactions(updatedTxs);
+    }
+  }, [transactions]);
 
   // Synchronize with Firestore (Cloud Database)
   useEffect(() => {
@@ -521,11 +683,27 @@ export default function App() {
           periodEnd,
           periodTotal,
           tempCategories,
-          patrimonyHistory
+          patrimonyHistory,
+          planEntries,
+          planIncomes,
+          planCards,
+          didClearLegacyCards_v8: true,
+          didClearLegacyCards_v9: true
         };
         try {
           await setDoc(docRef, JSON.parse(JSON.stringify(dataToSave)));
+          setIsOffline(false);
         } catch (writeErr) {
+          const isConnErr = writeErr instanceof Error && (
+            writeErr.message.includes('unavailable') || 
+            writeErr.message.includes('Could not reach Cloud Firestore') ||
+            writeErr.message.includes('offline')
+          );
+          if (isConnErr) {
+            console.warn("Could not sync to Firestore due to connection failure. Data remains saved in localStorage.");
+            setIsOffline(true);
+            return;
+          }
           handleFirestoreError(writeErr, 'write', pathStr);
         }
       } catch (err) {
@@ -549,8 +727,38 @@ export default function App() {
     periodEnd,
     periodTotal,
     tempCategories,
-    patrimonyHistory
+    patrimonyHistory,
+    planEntries,
+    planIncomes,
+    planCards
   ]);
+
+  // One-time automatic migration to clean up duplicate cards in Firebase / LocalStorage
+  useEffect(() => {
+    if (!dataLoadedFromFirestore) return;
+
+    const needsMigration = planCards.some(card => !card.months);
+    if (!needsMigration) return;
+
+    setPlanCards(prev => {
+      return prev.map(card => {
+        if (!card.months) {
+          const usedMonths = Array.from(new Set(
+            planEntries
+              .filter(entry => entry.cardId === card.id)
+              .map(entry => entry.month)
+          ));
+          return {
+            ...card,
+            months: usedMonths.length > 0 ? usedMonths : ['2026-06']
+          };
+        }
+        return card;
+      });
+    });
+
+    triggerToast('Planejamento de cartões otimizado e limpo com sucesso!');
+  }, [dataLoadedFromFirestore, planEntries, planCards]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -578,7 +786,7 @@ export default function App() {
       setAccounts(INITIAL_ACCOUNTS);
       setBudgetAccounts([
         { id: 'b1', name: 'Æternum', balance: 0.00 },
-        { id: 'b2', name: 'Repo Nu', balance: 0.00 },
+        { id: 'b2', name: 'PIX', balance: 0.00 },
         { id: 'b3', name: 'Nubank', balance: 0.00 },
         { id: 'b4', name: 'Pai', balance: 0.00 },
         { id: 'b5', name: 'Mercado Livre', balance: 0.00 },
@@ -1122,7 +1330,7 @@ export default function App() {
       setAccounts(INITIAL_ACCOUNTS);
       setBudgetAccounts([
         { id: 'b1', name: 'Æternum', balance: 0.00 },
-        { id: 'b2', name: 'Repo Nu', balance: 0.00 },
+        { id: 'b2', name: 'PIX', balance: 0.00 },
         { id: 'b3', name: 'Nubank', balance: 0.00 },
         { id: 'b4', name: 'Pai', balance: 0.00 },
         { id: 'b5', name: 'Mercado Livre', balance: 0.00 },
@@ -1348,7 +1556,10 @@ export default function App() {
         'nocturne_period_start',
         'nocturne_period_end',
         'nocturne_period_total',
-        'nocturne_temp_categories'
+        'nocturne_temp_categories',
+        'nocturne_plan_entries',
+        'nocturne_plan_incomes',
+        'nocturne_plan_cards'
       ];
       
       keysToBackup.forEach(key => {
@@ -1392,7 +1603,10 @@ export default function App() {
           'nocturne_period_start',
           'nocturne_period_end',
           'nocturne_period_total',
-          'nocturne_temp_categories'
+          'nocturne_temp_categories',
+          'nocturne_plan_entries',
+          'nocturne_plan_incomes',
+          'nocturne_plan_cards'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -1414,12 +1628,25 @@ export default function App() {
         triggerToast('Dados carregados com sucesso!');
         
         if (backupData['nocturne_user']) setUser(JSON.parse(backupData['nocturne_user']!));
-        if (backupData['nocturne_accounts']) setAccounts(JSON.parse(backupData['nocturne_accounts']!));
-        if (backupData['nocturne_budget_accounts']) setBudgetAccounts(JSON.parse(backupData['nocturne_budget_accounts']!));
-        if (backupData['nocturne_transactions']) setTransactions(JSON.parse(backupData['nocturne_transactions']!));
+        if (backupData['nocturne_accounts']) {
+          const bAccs = JSON.parse(backupData['nocturne_accounts']!) as Account[];
+          setAccounts(bAccs.map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc));
+        }
+        if (backupData['nocturne_budget_accounts']) {
+          const bBudgetAccs = JSON.parse(backupData['nocturne_budget_accounts']!) as Account[];
+          setBudgetAccounts(bBudgetAccs.map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc));
+        }
+        if (backupData['nocturne_transactions']) {
+          const bTxs = JSON.parse(backupData['nocturne_transactions']!) as Transaction[];
+          setTransactions(bTxs.map(tx => tx.account === 'Repo Nu' ? { ...tx, account: 'PIX' } : tx));
+        }
         if (backupData['nocturne_cards']) setCards(JSON.parse(backupData['nocturne_cards']!));
         if (backupData['nocturne_temp_categories']) setTempCategories(JSON.parse(backupData['nocturne_temp_categories']!));
         
+        if (backupData['nocturne_plan_entries']) setPlanEntries(JSON.parse(backupData['nocturne_plan_entries']!));
+        if (backupData['nocturne_plan_incomes']) setPlanIncomes(JSON.parse(backupData['nocturne_plan_incomes']!));
+        if (backupData['nocturne_plan_cards']) setPlanCards(JSON.parse(backupData['nocturne_plan_cards']!));
+
         if (backupData['nocturne_period_active'] !== undefined) setPeriodActive(backupData['nocturne_period_active'] === 'true');
         if (backupData['nocturne_period_start'] !== undefined) setPeriodStart(backupData['nocturne_period_start'] || '');
         if (backupData['nocturne_period_end'] !== undefined) setPeriodEnd(backupData['nocturne_period_end'] || '');
@@ -1592,8 +1819,109 @@ export default function App() {
   }
 
   return (
-    <div className="h-[100dvh] overflow-hidden bg-bg-base text-text-high font-sans selection:bg-brand-primary/20 flex flex-col justify-between max-w-md mx-auto relative shadow-2xl border-x border-outline-variant/40 md:mt-2 md:rounded-3xl md:h-[95vh] md:max-h-[920px] pb-0 custom-scrollbar" id="web-mobile-container">
+    <div 
+      className="h-[100dvh] md:h-screen w-full overflow-hidden bg-bg-base text-text-high font-sans selection:bg-brand-primary/20 flex flex-col md:flex-row max-w-md md:max-w-none mx-auto md:mx-0 relative shadow-2xl md:shadow-none border-x md:border-none border-outline-variant/40 md:mt-0 md:rounded-none pb-0 custom-scrollbar" 
+      id="web-main-container"
+    >
       
+      {/* Elegant Desktop Sidebar */}
+      <aside 
+        className="hidden md:flex flex-col w-60 bg-zinc-950 border-r border-outline-variant/20 p-5 shrink-0 justify-between h-full relative select-none"
+        id="desktop-sidebar"
+      >
+        <div className="space-y-8">
+          {/* Logo Brand Header */}
+          <div className="flex items-center gap-3 pb-5 border-b border-outline-variant/10" id="desktop-sidebar-brand">
+            <img 
+              src="/favicon.jpg" 
+              alt="Nocturne Logo" 
+              className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
+              referrerPolicy="no-referrer"
+            />
+            <div>
+              <h1 className="text-sm font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
+              <p className="text-[9px] text-text-muted uppercase tracking-widest font-semibold">CONTROLE FINANCEIRO</p>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="space-y-1.5" id="desktop-sidebar-nav">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('budget');
+                setActiveTab('transacoes');
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                activeScreen === 'budget'
+                  ? 'bg-brand-primary/10 text-brand-primary'
+                  : 'text-text-muted hover:text-white hover:bg-white/5'
+              }`}
+              id="btn-sidebar-budget"
+            >
+              <Wallet size={16} />
+              <span>BUDGET</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveScreen('contas')}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                activeScreen === 'contas'
+                  ? 'bg-brand-primary/10 text-brand-primary'
+                  : 'text-text-muted hover:text-white hover:bg-white/5'
+              }`}
+              id="btn-sidebar-contas"
+            >
+              <Landmark size={16} />
+              <span>CONTAS</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveScreen('plan')}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                activeScreen === 'plan'
+                  ? 'bg-brand-primary/10 text-brand-primary'
+                  : 'text-text-muted hover:text-white hover:bg-white/5'
+              }`}
+              id="btn-sidebar-plan"
+            >
+              <Calendar size={16} />
+              <span>PLAN</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveScreen('temp')}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                activeScreen === 'temp'
+                  ? 'bg-brand-primary/10 text-brand-primary'
+                  : 'text-text-muted hover:text-white hover:bg-white/5'
+              }`}
+              id="btn-sidebar-temp"
+            >
+              <Clock size={16} />
+              <span>TEMP</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveScreen('config')}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                activeScreen === 'config'
+                  ? 'bg-brand-primary/10 text-brand-primary'
+                  : 'text-text-muted hover:text-white hover:bg-white/5'
+              }`}
+              id="btn-sidebar-config"
+            >
+              <Settings size={16} className={activeScreen === 'config' ? 'rotate-45' : ''} />
+              <span>SYSTEM</span>
+            </button>
+          </nav>
+        </div>
+      </aside>
+
       {/* Dynamic Toast Message */}
       <AnimatePresence>
         {toastMessage && (
@@ -1615,14 +1943,12 @@ export default function App() {
         )}
       </AnimatePresence>
 
-
-
       {/* Main Container Area */}
-      <main className="flex-1 overflow-y-auto px-6 pt-6 pb-28 custom-scrollbar flex flex-col justify-between" id="content-scroller">
+      <main className="flex-1 overflow-y-auto px-6 pt-6 pb-28 md:px-10 md:py-8 md:pb-8 custom-scrollbar flex flex-col justify-between h-full" id="content-scroller">
         <div className="flex-1 pb-6">
         
-        {/* App Title Header with Generated Yellow/Black Icon */}
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-outline-variant/10" id="app-brand-header">
+        {/* App Title Header with Generated Yellow/Black Icon (Visible on Mobile only) */}
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-outline-variant/10 md:hidden" id="app-brand-header">
           <img 
             src="/favicon.jpg" 
             alt="Nocturne Logo" 
@@ -1630,8 +1956,40 @@ export default function App() {
             referrerPolicy="no-referrer"
           />
           <div>
-            <h1 className="text-base font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
-            <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">Controle de Orçamento</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
+              {isOffline && (
+                <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded font-semibold uppercase tracking-wider">Offline</span>
+              )}
+            </div>
+            <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">CONTROLE FINANCEIRO</p>
+          </div>
+        </div>
+
+        {/* Desktop Page Title Header (Visible on Desktop only) */}
+        <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
+          <div>
+            <h2 className="text-xl font-black uppercase tracking-wider text-white font-display flex items-center gap-2.5">
+              <span>
+                {activeScreen === 'budget' && 'BUDGET'}
+                {activeScreen === 'contas' && 'CONTAS'}
+                {activeScreen === 'plan' && 'PLAN'}
+                {activeScreen === 'temp' && 'TEMP'}
+                {activeScreen === 'config' && 'SYSTEM'}
+              </span>
+              {isOffline && (
+                <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded-lg font-semibold uppercase tracking-wider">Modo Offline</span>
+              )}
+            </h2>
+          </div>
+          
+          <div className="flex items-center gap-4 select-none">
+            <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
+              <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
+              <span className="text-sm font-bold text-brand-primary font-mono">
+                R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -1658,160 +2016,173 @@ export default function App() {
               </div>
             </div>
 
-            {/* Total balance micro cards */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-bg-surface-low border border-outline-variant/50 p-4 rounded-xl flex flex-col justify-between">
-                <div>
-                  <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Total em Contas</span>
-                  <p className="text-lg font-bold text-white mt-1">
-                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div className="text-[10px] text-green-400 flex items-center gap-1 mt-2 font-mono">
-                  <ArrowUpRight size={10} /> + R$ {dashboardStats.totalIncomes.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} entrada
-                </div>
-              </div>
-
-              <div className="bg-bg-surface-low border border-outline-variant/50 p-4 rounded-xl flex flex-col justify-between">
-                <div>
-                  <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Limite Disponível</span>
-                  <p className="text-lg font-bold text-white mt-1">
-                    R$ {cards.reduce((sum, c) => sum + (c.limit - c.used), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
-                  </p>
-                </div>
-                <div className="text-[10px] text-red-500 flex items-center gap-1 mt-2 font-mono">
-                  <ArrowDownLeft size={10} /> - R$ {dashboardStats.totalOutcomes.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} saída
-                </div>
-              </div>
-            </div>
-
-            {/* Cash Flow Custom Area Chart Widget */}
-            <section className="bg-bg-surface-low border border-outline-variant/80 rounded-xl p-5 gold-glow shadow-md">
-              <h4 className="text-[11px] uppercase tracking-widest text-text-muted font-bold mb-4">Performance e Volume Comercial</h4>
+            {/* Responsive Desktop Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start" id="dashboard-responsive-grid">
               
-              <div className="h-32 w-full mt-2 relative flex items-end">
-                {/* Visual gridlines */}
-                <div className="absolute inset-0 flex flex-col justify-between py-2 border-b border-white/5">
-                  <div className="border-t border-white/5 w-full h-px" />
-                  <div className="border-t border-white/5 w-full h-px" />
-                  <div className="border-t border-white/10 w-full h-px" />
+              {/* Main Column (Cards, Chart, Recent Transactions) */}
+              <div className="lg:col-span-2 space-y-6">
+                {/* Total balance micro cards */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-bg-surface-low border border-outline-variant/50 p-4 rounded-xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Total em Contas</span>
+                      <p className="text-lg font-bold text-white mt-1">
+                        R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div className="text-[10px] text-green-400 flex items-center gap-1 mt-2 font-mono">
+                      <ArrowUpRight size={10} /> + R$ {dashboardStats.totalIncomes.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} entrada
+                    </div>
+                  </div>
+
+                  <div className="bg-bg-surface-low border border-outline-variant/50 p-4 rounded-xl flex flex-col justify-between">
+                    <div>
+                      <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Limite Disponível</span>
+                      <p className="text-lg font-bold text-white mt-1">
+                        R$ {cards.reduce((sum, c) => sum + (c.limit - c.used), 0).toLocaleString('pt-BR', { minimumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                    <div className="text-[10px] text-red-500 flex items-center gap-1 mt-2 font-mono">
+                      <ArrowDownLeft size={10} /> - R$ {dashboardStats.totalOutcomes.toLocaleString('pt-BR', { maximumFractionDigits: 0 })} saída
+                    </div>
+                  </div>
                 </div>
 
-                {/* Animated graphic SVG representation */}
-                <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
-                  {/* Area fill */}
-                  <path
-                    d="M 0 120 C 30 110, 60 70, 90 85 C 120 100, 150 40, 180 50 C 210 60, 240 10, 270 25 C 300 40, 330 90, 360 85 L 360 120 L 0 120 Z"
-                    fill="url(#goldGradient)"
-                    opacity="0.15"
-                  />
-                  {/* Grid-line path */}
-                  <motion.path
-                    initial={{ pathLength: 0 }}
-                    animate={{ pathLength: 1 }}
-                    transition={{ duration: 1.5 }}
-                    d="M 0 120 C 30 110, 60 70, 90 85 C 120 100, 150 40, 180 50 C 210 60, 240 10, 270 25 C 300 40, 330 90, 360 85"
-                    fill="none"
-                    stroke="#ffd700"
-                    strokeWidth="2.5"
-                  />
+                {/* Cash Flow Custom Area Chart Widget */}
+                <section className="bg-bg-surface-low border border-outline-variant/80 rounded-xl p-5 gold-glow shadow-md">
+                  <h4 className="text-[11px] uppercase tracking-widest text-text-muted font-bold mb-4">Performance e Volume Comercial</h4>
                   
-                  {/* Decorative Gradient Def */}
-                  <defs>
-                    <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#ffd700" />
-                      <stop offset="100%" stopColor="#050505" />
-                    </linearGradient>
-                  </defs>
-                </svg>
+                  <div className="h-32 w-full mt-2 relative flex items-end">
+                    {/* Visual gridlines */}
+                    <div className="absolute inset-0 flex flex-col justify-between py-2 border-b border-white/5">
+                      <div className="border-t border-white/5 w-full h-px" />
+                      <div className="border-t border-white/5 w-full h-px" />
+                      <div className="border-t border-white/10 w-full h-px" />
+                    </div>
 
-                {/* Hover highlights */}
-                <div className="absolute left-[38%] top-[30%] w-3 h-3 rounded-full bg-brand-primary border-2 border-black animate-ping" />
-                <div className="absolute left-[38%] top-[30%] w-3 h-3 rounded-full bg-brand-primary border-2 border-black" />
-                
-                {/* floating tooltip */}
-                <div className="absolute left-[44%] top-[10%] bg-bg-surface-high border border-brand-primary/20 px-2 py-1 rounded text-[10px] font-mono text-brand-primary z-20">
-                  Dia 24: R$ 2.450,00
+                    {/* Animated graphic SVG representation */}
+                    <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
+                      {/* Area fill */}
+                      <path
+                        d="M 0 120 C 30 110, 60 70, 90 85 C 120 100, 150 40, 180 50 C 210 60, 240 10, 270 25 C 300 40, 330 90, 360 85 L 360 120 L 0 120 Z"
+                        fill="url(#goldGradient)"
+                        opacity="0.15"
+                      />
+                      {/* Grid-line path */}
+                      <motion.path
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 1.5 }}
+                        d="M 0 120 C 30 110, 60 70, 90 85 C 120 100, 150 40, 180 50 C 210 60, 240 10, 270 25 C 300 40, 330 90, 360 85"
+                        fill="none"
+                        stroke="#ffd700"
+                        strokeWidth="2.5"
+                      />
+                      
+                      {/* Decorative Gradient Def */}
+                      <defs>
+                        <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#ffd700" />
+                          <stop offset="100%" stopColor="#050505" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+
+                    {/* Hover highlights */}
+                    <div className="absolute left-[38%] top-[30%] w-3 h-3 rounded-full bg-brand-primary border-2 border-black animate-ping" />
+                    <div className="absolute left-[38%] top-[30%] w-3 h-3 rounded-full bg-brand-primary border-2 border-black" />
+                    
+                    {/* floating tooltip */}
+                    <div className="absolute left-[44%] top-[10%] bg-bg-surface-high border border-brand-primary/20 px-2 py-1 rounded text-[10px] font-mono text-brand-primary z-20">
+                      Dia 24: R$ 2.450,00
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between text-[10px] text-text-muted mt-2 font-mono">
+                    <span>Mai</span>
+                    <span>Jun</span>
+                    <span>Jul</span>
+                    <span>Ago</span>
+                    <span>Set</span>
+                    <span>Out (Atual)</span>
+                  </div>
+                </section>
+
+                {/* Micro Quick Transactions log header */}
+                <div className="pt-2">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-[11px] uppercase tracking-widest text-text-muted font-bold">Lançamentos Recentes</h4>
+                    <button onClick={() => setActiveTab('transacoes')} className="text-[11px] text-brand-primary hover:underline font-bold">
+                      Ver todos
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {transactions.slice(0, 3).map(t => {
+                      return (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between p-3.5 bg-bg-surface-low border border-outline-variant/30 rounded-xl transition-all"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="text-xs font-bold text-text-high">{t.description}</p>
+                              <p className="text-[10px] text-text-muted font-mono">{t.account} • {t.time}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-xs font-bold ${t.amount >= 0 ? 'text-green-500' : 'text-text-high'}`}>
+                              {t.amount >= 0 ? '+' : '-'} R$ {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </span>
+                            <button
+                              onClick={(e) => handleEditClick(t, e)}
+                              className="p-1.5 hover:text-brand-primary text-text-muted rounded hover:bg-white/5 transition-all cursor-pointer"
+                              title="Editar"
+                              id={`edit-recent-${t.id}`}
+                            >
+                              <Edit3 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-between text-[10px] text-text-muted mt-2 font-mono">
-                <span>Mai</span>
-                <span>Jun</span>
-                <span>Jul</span>
-                <span>Ago</span>
-                <span>Set</span>
-                <span>Out (Atual)</span>
-              </div>
-            </section>
-
-            {/* Category distribution visual block */}
-            <section className="bg-bg-surface-low border border-outline-variant p-5 rounded-xl">
-              <h4 className="text-[11px] uppercase tracking-widest text-text-muted font-bold mb-4">Concentração de Despesas</h4>
-              <div className="space-y-3.5">
-                {dashboardStats.categoryDistribution.slice(0, 4).map((item) => {
-                  return (
-                    <div key={item.name} className="space-y-1">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="text-text-high font-medium">{item.name}</span>
-                        <span className="font-mono text-text-muted">
-                          R$ {item.value.toLocaleString('pt-BR')} ({item.percentage.toFixed(0)}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 bg-bg-base rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-brand-secondary rounded-full"
-                          style={{ width: `${item.percentage}%` }}
-                        />
-                      </div>
+              {/* Side Column (Concentration of Expenses) */}
+              <div className="space-y-6">
+                {/* Category distribution visual block */}
+                <section className="bg-bg-surface-low border border-outline-variant p-5 rounded-xl h-full flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-[11px] uppercase tracking-widest text-text-muted font-bold mb-4">Concentração de Despesas</h4>
+                    <div className="space-y-3.5">
+                      {dashboardStats.categoryDistribution.slice(0, 5).map((item) => {
+                        return (
+                          <div key={item.name} className="space-y-1">
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-text-high font-medium">{item.name}</span>
+                              <span className="font-mono text-text-muted">
+                                R$ {item.value.toLocaleString('pt-BR')} ({item.percentage.toFixed(0)}%)
+                              </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-bg-base rounded-full overflow-hidden">
+                              <div
+                                  className="h-full bg-brand-secondary rounded-full"
+                                  style={{ width: `${item.percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {dashboardStats.categoryDistribution.length === 0 && (
+                        <p className="text-xs text-text-muted italic text-center py-4">Sem despesas registradas.</p>
+                      )}
                     </div>
-                  );
-                })}
-                {dashboardStats.categoryDistribution.length === 0 && (
-                  <p className="text-xs text-text-muted italic text-center py-4">Sem despesas registradas.</p>
-                )}
-              </div>
-            </section>
-
-            {/* Micro Quick Transactions log header */}
-            <div className="pt-2">
-              <div className="flex justify-between items-center mb-3">
-                <h4 className="text-[11px] uppercase tracking-widest text-text-muted font-bold">Lançamentos Recentes</h4>
-                <button onClick={() => setActiveTab('transacoes')} className="text-[11px] text-brand-primary hover:underline font-bold">
-                  Ver todos
-                </button>
+                  </div>
+                </section>
               </div>
 
-              <div className="space-y-2">
-                {transactions.slice(0, 3).map(t => {
-                  return (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between p-3.5 bg-bg-surface-low border border-outline-variant/30 rounded-xl transition-all"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div>
-                          <p className="text-xs font-bold text-text-high">{t.description}</p>
-                          <p className="text-[10px] text-text-muted font-mono">{t.account} • {t.time}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={`text-xs font-bold ${t.amount >= 0 ? 'text-green-500' : 'text-text-high'}`}>
-                          {t.amount >= 0 ? '+' : '-'} R$ {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </span>
-                        <button
-                          onClick={(e) => handleEditClick(t, e)}
-                          className="p-1.5 hover:text-brand-primary text-text-muted rounded hover:bg-white/5 transition-all cursor-pointer"
-                          title="Editar"
-                          id={`edit-recent-${t.id}`}
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </motion.div>
         )}
@@ -2136,7 +2507,7 @@ export default function App() {
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão 1.0.0 • Nocturne
+                Versão v8.0.0 • Nocturne
               </div>
             </div>
           </motion.div>
@@ -2152,86 +2523,115 @@ export default function App() {
             className="flex flex-col"
             id="contas-screen-view"
           >
-            {/* Header / Summary Card */}
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-lg relative overflow-hidden mb-6" id="contas-summary-header">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
-              <div className="flex justify-between items-center relative z-10">
-                <div className="space-y-1">
-                  <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block">
-                    Ativo Consolidado
-                  </span>
-                  <h2 className="text-3xl font-display font-black text-white tracking-tight">
-                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </h2>
+            {/* Reorganized Layout for Contas with Summary and Button on Top */}
+            <div className="flex flex-col gap-6" id="contas-screen-grid">
+              
+              {/* Top Section: Consolidado Card & Action Trigger */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch" id="contas-top-section">
+                {/* Header / Summary Card */}
+                <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-lg relative overflow-hidden flex flex-col justify-center" id="contas-summary-header">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
+                  <div className="flex justify-between items-center relative z-10">
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block">
+                        Ativo Consolidado
+                      </span>
+                      <h2 className="text-2xl font-display font-black text-white tracking-tight">
+                        R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </h2>
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={() => setIsPatrimonyModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 bg-[#ffe08b]/10 hover:bg-[#ffe08b]/20 border border-[#ffe08b]/30 hover:border-[#ffe08b] text-[#ffe08b] text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-[#ffe08b]/5 shrink-0"
+                      id="btn-open-patrimony-history"
+                    >
+                      <History size={13} strokeWidth={2.5} />
+                      Histórico
+                    </button>
+                  </div>
                 </div>
-                
+
+                {/* Botão de Cadastrar Nova Conta em popup modal */}
                 <button
                   type="button"
-                  onClick={() => setIsPatrimonyModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 bg-[#ffe08b]/10 hover:bg-[#ffe08b]/20 border border-[#ffe08b]/30 hover:border-[#ffe08b] text-[#ffe08b] text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-[#ffe08b]/5 shrink-0"
-                  id="btn-open-patrimony-history"
+                  onClick={() => {
+                    setNewAccountName('');
+                    setNewAccountBalance('');
+                    setIsNewAccountModalOpen(true);
+                  }}
+                  className="w-full md:h-full md:min-h-[88px] bg-brand-primary/10 hover:bg-brand-primary/20 border border-brand-primary/35 text-brand-primary font-bold uppercase text-[10px] tracking-widest py-2.5 md:py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                  id="btn-open-create-account-modal"
                 >
-                  <History size={13} strokeWidth={2.5} />
-                  Histórico
+                  <Plus size={14} strokeWidth={3} /> Cadastrar Nova Conta
                 </button>
               </div>
+
+              {/* Bottom Section: List of accounts */}
+              <div className="space-y-4" id="contas-managed-list-container">
+                <span className="block text-[10px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">
+                  Suas Contas Cadastradas
+                </span>
+
+                <Reorder.Group axis="y" values={accounts} onReorder={setAccounts} className="space-y-4" id="reorder-accounts-group">
+                  {accounts.map(acc => (
+                    <AccountItem
+                      key={acc.id}
+                      acc={acc}
+                      onEdit={(accToEdit) => {
+                        setEditingAccount(accToEdit);
+                        setEditAccountName(accToEdit.name);
+                        setEditAccountBalance(accToEdit.balance.toFixed(2).replace('.', ','));
+                        setEditAccountColor(accToEdit.color || 'brand-primary');
+                        setIsEditAccountModalOpen(true);
+                      }}
+                      onDelete={(accToDelete) => {
+                        if (accounts.length <= 1) {
+                          triggerToast('Mantenha pelo menos uma conta ativa para operacionalizar o app.');
+                          return;
+                        }
+                        setAccountToDelete(accToDelete);
+                      }}
+                      onAddBalance={(accToAdd) => {
+                        setSelectedAdjustingAccount(accToAdd);
+                        setAdjustingType('somar');
+                        setAdjustmentAmount('');
+                        setIsAdjustBalanceModalOpen(true);
+                      }}
+                      onSubBalance={(accToSub) => {
+                        setSelectedAdjustingAccount(accToSub);
+                        setAdjustingType('subtrair');
+                        setAdjustmentAmount('');
+                        setIsAdjustBalanceModalOpen(true);
+                      }}
+                    />
+                  ))}
+                </Reorder.Group>
+              </div>
+
             </div>
+          </motion.div>
+        )}
 
-            {/* Botão de Cadastrar Nova Conta em popup modal */}
-            <button
-              type="button"
-              onClick={() => {
-                setNewAccountName('');
-                setNewAccountBalance('');
-                setIsNewAccountModalOpen(true);
-              }}
-              className="w-full bg-brand-primary/10 hover:bg-brand-primary/20 border border-brand-primary/35 text-brand-primary font-bold uppercase text-[10px] tracking-widest py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2 mb-6"
-              id="btn-open-create-account-modal"
-            >
-              <Plus size={14} strokeWidth={3} /> Cadastrar Nova Conta
-            </button>
-
-            {/* List of accounts */}
-            <div className="space-y-4" id="contas-managed-list-container">
-              <span className="block text-[10px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">
-                Suas Contas Cadastradas
-              </span>
-
-              <Reorder.Group axis="y" values={accounts} onReorder={setAccounts} className="space-y-4" id="reorder-accounts-group">
-                {accounts.map(acc => (
-                  <AccountItem
-                    key={acc.id}
-                    acc={acc}
-                    onEdit={(accToEdit) => {
-                      setEditingAccount(accToEdit);
-                      setEditAccountName(accToEdit.name);
-                      setEditAccountBalance(accToEdit.balance.toFixed(2).replace('.', ','));
-                      setEditAccountColor(accToEdit.color || 'brand-primary');
-                      setIsEditAccountModalOpen(true);
-                    }}
-                    onDelete={(accToDelete) => {
-                      if (accounts.length <= 1) {
-                        triggerToast('Mantenha pelo menos uma conta ativa para operacionalizar o app.');
-                        return;
-                      }
-                      setAccountToDelete(accToDelete);
-                    }}
-                    onAddBalance={(accToAdd) => {
-                      setSelectedAdjustingAccount(accToAdd);
-                      setAdjustingType('somar');
-                      setAdjustmentAmount('');
-                      setIsAdjustBalanceModalOpen(true);
-                    }}
-                    onSubBalance={(accToSub) => {
-                      setSelectedAdjustingAccount(accToSub);
-                      setAdjustingType('subtrair');
-                      setAdjustmentAmount('');
-                      setIsAdjustBalanceModalOpen(true);
-                    }}
-                  />
-                ))}
-              </Reorder.Group>
-            </div>
+        {/* TAB PLAN (PLANEJAMENTO FINANCEIRO MENSAL) */}
+        {activeScreen === 'plan' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col h-full overflow-hidden"
+            id="plan-screen-view"
+          >
+            <PlanScreen
+              planEntries={planEntries}
+              setPlanEntries={setPlanEntries}
+              planIncomes={planIncomes}
+              setPlanIncomes={setPlanIncomes}
+              planCards={planCards}
+              setPlanCards={setPlanCards}
+              triggerToast={triggerToast}
+              accounts={accounts}
+            />
           </motion.div>
         )}
 
@@ -2480,7 +2880,7 @@ export default function App() {
                   <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
                 </div>
                 <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
-                  v1.1.0
+                  v8.0.0
                 </span>
               </div>
 
@@ -2596,14 +2996,14 @@ export default function App() {
         {/* Discrete footer for applet authoring */}
         {activeScreen === 'config' && (
           <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-            2026 - v1.1.0 - Desenvolvido por Armindo Neto
+            2026 - v8.0.0 - Desenvolvido por Armindo Neto
           </div>
         )}
       </main>
 
       {/* Fixed bottom menu bar with active dynamic states */}
       <div 
-        className="absolute bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-6 py-3.5 flex items-center justify-around md:rounded-b-[24px]" 
+        className="absolute bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-6 py-3.5 flex items-center justify-around md:hidden" 
         id="bottom-menu-bar"
       >
         <button
@@ -2624,6 +3024,16 @@ export default function App() {
         >
           <Landmark size={18} className={activeScreen === 'contas' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
           <span className="text-[10px] font-black tracking-widest uppercase font-display">CONTAS</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveScreen('plan')}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'plan' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          id="btn-nav-plan"
+        >
+          <Calendar size={18} className={activeScreen === 'plan' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
+          <span className="text-[10px] font-black tracking-widest uppercase font-display">PLAN</span>
         </button>
 
         <button
@@ -2661,7 +3071,7 @@ export default function App() {
               setEditingTransaction(null);
               setIsFormOpen(true);
             }}
-            className="absolute bottom-20 right-6 w-14 h-14 bg-brand-primary text-black rounded-full flex items-center justify-center shadow-2xl hover:brightness-110 z-30 cursor-pointer gold-glow ring-2 ring-brand-primary/20"
+            className="absolute bottom-20 md:bottom-8 right-6 w-14 h-14 bg-brand-primary text-black rounded-full flex items-center justify-center shadow-2xl hover:brightness-110 z-30 cursor-pointer gold-glow ring-2 ring-brand-primary/20"
             title="Novo lançamento"
             id="global-add-fab-btn"
           >
@@ -3286,11 +3696,11 @@ export default function App() {
                     {/* Breakdown micro metrics */}
                     <div className="grid grid-cols-2 gap-2 pt-2.5 border-t border-white/5 font-mono text-[9px] text-text-muted">
                       <div>
-                        Média de Despesa Diária:{' '}
+                        Média Diária:{' '}
                         <strong className="text-white font-bold">R$ {analysisData.averageDailyExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                       </div>
                       <div className="text-right">
-                        Total de Despesas Reais:{' '}
+                        Total de Gastos:{' '}
                         <strong className="text-white font-bold">R$ {analysisData.totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                       </div>
                     </div>
@@ -3492,7 +3902,7 @@ export default function App() {
                             color: '#ffffff'
                           }} 
                           labelClassName="text-text-muted font-bold"
-                          formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Lançamento']}
+                          formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Patrimônio']}
                         />
                         <Line 
                           type="monotone" 
@@ -3500,7 +3910,7 @@ export default function App() {
                           stroke="#ffe08b" 
                           strokeWidth={2.5}
                           activeDot={{ r: 6 }}
-                          dot={{ r: 4, fill: '#111318', stroke: '#ffe08b', strokeWidth: 2 }}
+                          dot={false}
                         />
                       </LineChart>
                     </ResponsiveContainer>
