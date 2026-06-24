@@ -187,6 +187,20 @@ export default function App() {
   const [swUpdateAvailable, setSwUpdateAvailable] = useState<boolean>(false);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState<boolean>(false);
 
+  // --- Theme State ---
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('app-theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    if (theme === 'light') {
+      document.documentElement.classList.add('light');
+    } else {
+      document.documentElement.classList.remove('light');
+    }
+    localStorage.setItem('app-theme', theme);
+  }, [theme]);
+
   // --- Persistent States ---
   const [user, setUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('nocturne_user');
@@ -2520,7 +2534,7 @@ export default function App() {
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão v8.1.0 • Nocturne
+                Versão v8.1.1 • Nocturne
               </div>
             </div>
           </motion.div>
@@ -2887,6 +2901,48 @@ export default function App() {
               </div>
             </div>
 
+            {/* Tema (Aparência) */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-appearance-box">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">Aparência</span>
+              </div>
+              <div className="grid grid-cols-2 gap-3" id="theme-selectors">
+                <button
+                  onClick={() => setTheme('dark')}
+                  className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all cursor-pointer ${
+                    theme === 'dark'
+                      ? 'bg-brand-primary/10 border-brand-primary text-white shadow-sm'
+                      : 'bg-white/5 border-white/5 hover:border-white/10 text-text-muted hover:text-white'
+                  }`}
+                  id="btn-theme-dark"
+                >
+                  <div className="w-full h-10 rounded bg-black/40 border border-white/10 flex items-center justify-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[#050505]" />
+                    <div className="w-6 h-1.5 rounded bg-[#131313] absolute left-1.5 top-1.5" />
+                    <div className="w-3 h-3 rounded-full bg-[#ffd700] absolute right-1.5 top-1.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Modo Escuro</span>
+                </button>
+                <button
+                  onClick={() => setTheme('light')}
+                  className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all cursor-pointer ${
+                    theme === 'light'
+                      ? 'bg-brand-primary/10 border-brand-primary text-black shadow-sm'
+                      : 'bg-white/5 border-white/5 hover:border-white/10 text-text-muted hover:text-white'
+                  }`}
+                  id="btn-theme-light"
+                >
+                  <div className="w-full h-10 rounded bg-white border border-black/10 flex items-center justify-center relative overflow-hidden">
+                    <div className="absolute inset-0 bg-[#f8fafc]" />
+                    <div className="w-6 h-1.5 rounded bg-[#f1f5f9] absolute left-1.5 top-1.5" />
+                    <div className="w-3 h-3 rounded-full bg-[#d97706] absolute right-1.5 top-1.5" />
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider">Modo Claro</span>
+                </button>
+              </div>
+            </div>
+
             {/* App updates block */}
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-app-updates-box">
               <div className="flex items-center justify-between">
@@ -2895,7 +2951,7 @@ export default function App() {
                   <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
                 </div>
                 <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
-                  v8.1.0
+                  v8.1.1
                 </span>
               </div>
 
@@ -3011,7 +3067,7 @@ export default function App() {
         {/* Discrete footer for applet authoring */}
         {activeScreen === 'config' && (
           <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-            2026 - v8.1.0 - Desenvolvido por Armindo Neto
+            2026 - v8.1.1 - Desenvolvido por Armindo Neto
           </div>
         )}
       </main>
