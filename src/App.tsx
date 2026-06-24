@@ -2520,7 +2520,7 @@ export default function App() {
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão v8.0.0 • Nocturne
+                Versão v8.1.0 • Nocturne
               </div>
             </div>
           </motion.div>
@@ -2895,7 +2895,7 @@ export default function App() {
                   <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
                 </div>
                 <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
-                  v8.0.0
+                  v8.1.0
                 </span>
               </div>
 
@@ -3011,7 +3011,7 @@ export default function App() {
         {/* Discrete footer for applet authoring */}
         {activeScreen === 'config' && (
           <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-            2026 - v8.0.0 - Desenvolvido por Armindo Neto
+            2026 - v8.1.0 - Desenvolvido por Armindo Neto
           </div>
         )}
       </main>

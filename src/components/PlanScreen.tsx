@@ -649,47 +649,49 @@ export default function PlanScreen({
 
     const columnContent = (
       <>
-        {/* MONTH HEADER FOR COLUMN (shows month name and Active Month toggle) */}
-        <div className="flex items-center justify-between bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 shadow-sm" id={`plan-month-header-${monthStr}`}>
-          {activePlanMonth === monthStr ? (
-            <button
-              onClick={() => handleOpenPaymentPopup(monthStr)}
-              className="text-xs font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none text-left underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
-              title="Clique para abrir controle de pagamentos do Mês Ativo"
-              id={`btn-open-payment-column-${monthStr}`}
-            >
-              {formatMonthName(monthStr)}
-            </button>
-          ) : (
-            <span className="text-xs font-black uppercase tracking-widest text-brand-primary font-display">
-              {formatMonthName(monthStr)}
-            </span>
-          )}
-
-          {/* Active Month Status & Button */}
-          <div className="flex items-center gap-2">
+        {/* MONTH HEADER FOR COLUMN (shows month name and Active Month toggle) - DESKTOP ONLY */}
+        {isDesktop && (
+          <div className="flex items-center justify-between bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 shadow-sm" id={`plan-month-header-${monthStr}`}>
             {activePlanMonth === monthStr ? (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-black uppercase tracking-wider">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Mês Ativo</span>
-              </div>
-            ) : (
               <button
-                onClick={() => {
-                  if (setActivePlanMonth) {
-                    setActivePlanMonth(monthStr);
-                    setCurrentMonth(monthStr);
-                    triggerToast(`"${formatMonthName(monthStr)}" definido como Mês Ativo!`);
-                  }
-                }}
-                className="px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-white/10 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
-                id={`btn-set-active-month-${monthStr}`}
+                onClick={() => handleOpenPaymentPopup(monthStr)}
+                className="text-xs font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none text-left underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
+                title="Clique para abrir controle de pagamentos do Mês Ativo"
+                id={`btn-open-payment-column-${monthStr}`}
               >
-                Definir Ativo
+                {formatMonthName(monthStr)}
               </button>
+            ) : (
+              <span className="text-xs font-black uppercase tracking-widest text-brand-primary font-display">
+                {formatMonthName(monthStr)}
+              </span>
             )}
+
+            {/* Active Month Status & Button */}
+            <div className="flex items-center gap-2">
+              {activePlanMonth === monthStr ? (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Mês Ativo</span>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (setActivePlanMonth) {
+                      setActivePlanMonth(monthStr);
+                      setCurrentMonth(monthStr);
+                      triggerToast(`"${formatMonthName(monthStr)}" definido como Mês Ativo!`);
+                    }
+                  }}
+                  className="px-2.5 py-1 rounded-full bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-white/10 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+                  id={`btn-set-active-month-${monthStr}`}
+                >
+                  Definir Ativo
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 2. RESUMO PANEL (BALANÇO, ENTRADA, GASTOS) */}
         <div className="grid grid-cols-3 gap-2.5" id={`plan-summary-grid-${monthStr}`}>
@@ -1252,68 +1254,93 @@ export default function PlanScreen({
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-24" id="plan-screen-container">
       
-      {/* 1. MÊS / ANO SELECTOR (TOP) */}
-      <div className="flex items-center justify-between bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 mb-5 shadow-sm" id="plan-month-selector">
-        <button
-          onClick={handlePrevMonth}
-          className="p-2 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all cursor-pointer"
-          id="btn-plan-prev-month"
-        >
-          <ChevronLeft size={20} />
-        </button>
-
-        <span className="text-sm font-black uppercase tracking-widest text-white font-display flex flex-col items-center gap-1" id="plan-current-month-label">
-          <div className="flex items-center gap-2 flex-wrap justify-center">
-            {activePlanMonth === currentMonth ? (
-              <button
-                onClick={() => handleOpenPaymentPopup(currentMonth)}
-                className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
-                title="Clique para abrir controle de pagamentos do Mês Ativo"
-                id="btn-trigger-payment-popup-selector"
-              >
-                {formatMonthName(currentMonth)}
-              </button>
-            ) : (
-              <span>{formatMonthName(currentMonth)}</span>
-            )}
-
-            <span className="hidden lg:inline text-brand-primary flex items-center gap-2">
-              <span>→</span>
-              {activePlanMonth === getNextMonth(currentMonth) ? (
-                <button
-                  onClick={() => handleOpenPaymentPopup(getNextMonth(currentMonth))}
-                  className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
-                  title="Clique para abrir controle de pagamentos do Mês Ativo"
-                >
-                  {formatMonthName(getNextMonth(currentMonth))}
-                </button>
-              ) : (
-                <span>{formatMonthName(getNextMonth(currentMonth))}</span>
-              )}
-
-              <span>→</span>
-              {activePlanMonth === getNextMonth(getNextMonth(currentMonth)) ? (
-                <button
-                  onClick={() => handleOpenPaymentPopup(getNextMonth(getNextMonth(currentMonth)))}
-                  className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
-                  title="Clique para abrir controle de pagamentos do Mês Ativo"
-                >
-                  {formatMonthName(getNextMonth(getNextMonth(currentMonth)))}
-                </button>
-              ) : (
-                <span>{formatMonthName(getNextMonth(getNextMonth(currentMonth)))}</span>
-              )}
-            </span>
+      {/* 1. DISCREET DESKTOP MONTH NAVIGATOR (Arrows only, no repeated month names) */}
+      <div className="hidden lg:flex items-center justify-between mb-5" id="plan-desktop-header">
+        <h2 className="text-lg font-black tracking-wider text-white uppercase font-display">
+          Planejamento Mensal
+        </h2>
+        
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider mr-1">Navegar Meses</span>
+          <div className="flex items-center bg-bg-surface-low border border-outline-variant/30 rounded-xl p-1 gap-1">
+            <button
+              onClick={handlePrevMonth}
+              className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
+              title="Mês anterior"
+              id="btn-plan-prev-month-desktop"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <div className="w-[1px] h-4 bg-outline-variant/20" />
+            <button
+              onClick={handleNextMonth}
+              className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
+              title="Próximo mês"
+              id="btn-plan-next-month-desktop"
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
-        </span>
+        </div>
+      </div>
 
-        <button
-          onClick={handleNextMonth}
-          className="p-2 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all cursor-pointer"
-          id="btn-plan-next-month"
-        >
-          <ChevronRight size={20} />
-        </button>
+      {/* 2. UNIFIED MOBILE MONTH SELECTOR (Month selector and active state toggle embedded) */}
+      <div className="flex lg:hidden flex-col bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-4 mb-5 shadow-sm space-y-3" id="plan-month-selector-mobile">
+        <div className="flex items-center justify-between">
+          <button
+            onClick={handlePrevMonth}
+            className="p-2 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all cursor-pointer"
+            id="btn-plan-prev-month"
+          >
+            <ChevronLeft size={20} />
+          </button>
+
+          {activePlanMonth === currentMonth ? (
+            <button
+              onClick={() => handleOpenPaymentPopup(currentMonth)}
+              className="text-sm font-black uppercase tracking-widest text-brand-primary font-display hover:text-emerald-400 transition-all cursor-pointer bg-transparent border-none p-0 focus:outline-none underline decoration-brand-primary/30 decoration-2 underline-offset-4 hover:decoration-emerald-400"
+              title="Clique para abrir controle de pagamentos do Mês Ativo"
+              id="btn-trigger-payment-popup-selector"
+            >
+              {formatMonthName(currentMonth)}
+            </button>
+          ) : (
+            <span className="text-sm font-black uppercase tracking-widest text-white font-display">
+              {formatMonthName(currentMonth)}
+            </span>
+          )}
+
+          <button
+            onClick={handleNextMonth}
+            className="p-2 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-full transition-all cursor-pointer"
+            id="btn-plan-next-month"
+          >
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        {/* Embedded Active Month logic for Mobile */}
+        <div className="flex items-center justify-center pt-2 border-t border-outline-variant/10">
+          {activePlanMonth === currentMonth ? (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Mês Ativo</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                if (setActivePlanMonth) {
+                  setActivePlanMonth(currentMonth);
+                  triggerToast(`"${formatMonthName(currentMonth)}" definido como Mês Ativo!`);
+                }
+              }}
+              className="px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-text-muted hover:text-white border border-white/10 text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer"
+              id={`btn-set-active-month-mobile-${currentMonth}`}
+            >
+              Definir como Mês Ativo
+            </button>
+          )}
+        </div>
       </div>
 
       {/* MOBILE ONLY VIEW: renders single column */}
