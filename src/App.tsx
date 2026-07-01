@@ -1956,7 +1956,7 @@ export default function App() {
             initial={{ opacity: 0, y: -50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9, y: -20 }}
-            className="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 max-w-sm bg-neutral-900 border border-brand-primary/30 py-3 px-4 rounded-xl z-50 flex items-center justify-between shadow-2xl"
+            className="fixed top-6 left-1/2 -translate-x-1/2 w-11/12 max-w-sm bg-bg-surface-low border border-brand-primary/30 py-3 px-4 rounded-xl z-50 flex items-center justify-between shadow-2xl"
             id="toast-notification"
           >
             <div className="flex items-center gap-3">
@@ -2534,7 +2534,7 @@ export default function App() {
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão v8.1.1 • Nocturne
+                Versão v8.1.2 • Nocturne
               </div>
             </div>
           </motion.div>
@@ -2951,7 +2951,7 @@ export default function App() {
                   <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
                 </div>
                 <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
-                  v8.1.1
+                  v8.1.2
                 </span>
               </div>
 
@@ -3067,7 +3067,7 @@ export default function App() {
         {/* Discrete footer for applet authoring */}
         {activeScreen === 'config' && (
           <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-            2026 - v8.1.1 - Desenvolvido por Armindo Neto
+            2026 - v8.1.2 - Desenvolvido por Armindo Neto
           </div>
         )}
       </main>

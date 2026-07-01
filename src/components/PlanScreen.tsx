@@ -756,8 +756,8 @@ export default function PlanScreen({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded bg-brand-primary" />
               <h3 className="text-xs font-black uppercase tracking-widest text-white">GASTOS</h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-text-muted">
-                {formatBRL(sumGastos)}
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 ${sumGastos < 0 ? 'text-emerald-400 font-bold' : 'text-text-muted'}`}>
+                {sumGastos < 0 ? `+ R$ ${Math.abs(sumGastos).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(sumGastos)}
               </span>
             </div>
             
@@ -785,8 +785,8 @@ export default function PlanScreen({
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-black tracking-widest text-text-muted uppercase font-display">{sub.label}</span>
-                      <span className="text-[10px] font-mono font-bold text-white/80">
-                        {formatBRL(sub.sum)}
+                      <span className={`text-[10px] font-mono font-bold ${sub.sum < 0 ? 'text-emerald-400' : 'text-white/80'}`}>
+                        {sub.sum < 0 ? `+ R$ ${Math.abs(sub.sum).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(sub.sum)}
                       </span>
                     </div>
 
@@ -879,8 +879,8 @@ export default function PlanScreen({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded bg-purple-400" />
               <h3 className="text-xs font-black uppercase tracking-widest text-white">CARTÕES</h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-text-muted">
-                {formatBRL(sumCartoesTotal)}
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 ${sumCartoesTotal < 0 ? 'text-emerald-400 font-bold' : 'text-text-muted'}`}>
+                {sumCartoesTotal < 0 ? `+ R$ ${Math.abs(sumCartoesTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(sumCartoesTotal)}
               </span>
             </div>
 
@@ -954,8 +954,8 @@ export default function PlanScreen({
                       <div className="flex items-center gap-2">
                         <CreditCard size={13} className="text-purple-400" />
                         <h4 className="text-[11px] font-black uppercase tracking-wider text-purple-200">{card.name}</h4>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-400/5 border border-purple-400/10 text-purple-300">
-                          {formatBRL(cardTotal)}
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${cardTotal < 0 ? 'bg-emerald-400/5 border-emerald-500/10 text-emerald-400 font-bold' : 'bg-purple-400/5 border-purple-400/10 text-purple-300'}`}>
+                          {cardTotal < 0 ? `+ R$ ${Math.abs(cardTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(cardTotal)}
                         </span>
                       </div>
 
@@ -995,8 +995,8 @@ export default function PlanScreen({
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[9px] font-black tracking-wider text-text-muted uppercase font-display">{sub.label}</span>
-                                <span className="text-[9px] font-mono font-bold text-white/70">
-                                  {formatBRL(subTotal)}
+                                <span className={`text-[9px] font-mono font-bold ${subTotal < 0 ? 'text-emerald-400' : 'text-white/70'}`}>
+                                  {subTotal < 0 ? `+ R$ ${Math.abs(subTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(subTotal)}
                                 </span>
                               </div>
 
@@ -1093,8 +1093,8 @@ export default function PlanScreen({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded bg-emerald-500" />
               <h3 className="text-xs font-black uppercase tracking-widest text-white">CONTAS</h3>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 text-text-muted">
-                {formatBRL(sumContasTotal)}
+              <span className={`text-[10px] font-mono px-2 py-0.5 rounded bg-white/5 border border-white/10 ${sumContasTotal < 0 ? 'text-emerald-400 font-bold' : 'text-text-muted'}`}>
+                {sumContasTotal < 0 ? `+ R$ ${Math.abs(sumContasTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(sumContasTotal)}
               </span>
             </div>
 
@@ -1126,8 +1126,8 @@ export default function PlanScreen({
                       <div className="flex items-center gap-2">
                         <Wallet size={13} className="text-emerald-400" />
                         <h4 className="text-[11px] font-black uppercase tracking-wider text-emerald-200">{account.name}</h4>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-400/5 border border-emerald-400/10 text-emerald-300">
-                          Total: {formatBRL(accountTotal)}
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${accountTotal < 0 ? 'bg-emerald-400/10 border-emerald-500/20 text-emerald-400 font-bold' : 'bg-emerald-400/5 border-emerald-400/10 text-emerald-300'}`}>
+                          Total: {accountTotal < 0 ? `+ R$ ${Math.abs(accountTotal).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatBRL(accountTotal)}
                         </span>
                       </div>
 
@@ -1587,9 +1587,87 @@ export default function PlanScreen({
           });
           const activeEntries = monthlyEntries.filter(entry => entry.category !== 'cartoes' || !entry.cardId || visibleCards.some(vc => vc.id === entry.cardId));
 
+          // Define Grouped List Item interface
+          interface PopupListItem {
+            type: 'individual' | 'card_grouped';
+            id: string;
+            cardId?: string;
+            name: string;
+            amount: number;
+            isIncome: boolean;
+            category: string;
+            subcategory: string;
+            badgeColor: string;
+            originName: string;
+            entryIds: string[];
+          }
+
+          const groupedItems: PopupListItem[] = [];
+
+          // Add individual non-card entries
+          activeEntries.forEach(entry => {
+            if (entry.category !== 'cartoes' || !entry.cardId) {
+              let categoryLabel = 'Gastos';
+              let badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+              let originName = entry.subcategory;
+
+              if (entry.category === 'contas') {
+                categoryLabel = 'Contas';
+                badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                const acc = accounts.find(a => a.id === entry.accountId);
+                originName = acc ? acc.name : entry.subcategory;
+              }
+
+              groupedItems.push({
+                type: 'individual',
+                id: entry.id,
+                name: entry.name,
+                amount: entry.amount,
+                isIncome: entry.type === 'income',
+                category: entry.category,
+                subcategory: entry.subcategory,
+                badgeColor,
+                originName,
+                entryIds: [entry.id],
+              });
+            }
+          });
+
+          // Group card entries by cardId
+          const cardEntries = activeEntries.filter(entry => entry.category === 'cartoes' && entry.cardId);
+          const uniqueCardIds = Array.from(new Set(cardEntries.map(entry => entry.cardId as string)));
+
+          uniqueCardIds.forEach(cardId => {
+            const card = planCards.find(c => c.id === cardId);
+            const entriesOfCard = cardEntries.filter(entry => entry.cardId === cardId);
+            
+            if (entriesOfCard.length > 0) {
+              // Net sum: entry.type === 'income' ? -entry.amount : entry.amount
+              const netSum = entriesOfCard.reduce((sum, entry) => sum + (entry.type === 'income' ? -entry.amount : entry.amount), 0);
+              const cardName = card ? card.name : 'Cartão';
+              const entryIds = entriesOfCard.map(e => e.id);
+              
+              groupedItems.push({
+                type: 'card_grouped',
+                id: `card-${cardId}`,
+                cardId,
+                name: cardName,
+                amount: Math.abs(netSum),
+                isIncome: netSum < 0,
+                category: 'cartoes',
+                subcategory: 'CARTÃO',
+                badgeColor: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+                originName: 'Fatura Mensal',
+                entryIds,
+              });
+            }
+          });
+
           const selectedSum = activeEntries
             .filter(e => selectedEntryIds.includes(e.id))
             .reduce((sum, e) => sum + e.amount, 0);
+
+          const selectedGroupedCount = groupedItems.filter(item => item.entryIds.every(id => selectedEntryIds.includes(id))).length;
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm shadow-2xl" id="payment-popup-overlay">
@@ -1603,9 +1681,16 @@ export default function PlanScreen({
                 {/* Header */}
                 <div className="flex justify-between items-start border-b border-outline-variant/30 pb-3">
                   <div>
-                    <h3 className="text-sm font-black uppercase tracking-wider text-white">
-                      PAGAMENTO
-                    </h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                        PAGAMENTO
+                      </h3>
+                      {activeEntries.length > 0 && activeEntries.every(entry => paidEntryIds.includes(entry.id)) && (
+                        <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider animate-pulse shrink-0">
+                          Concluído!
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[10px] text-brand-primary mt-0.5 uppercase tracking-wide font-bold">
                       Mês Ativo: {formatMonthName(paymentPopupMonth)}
                     </p>
@@ -1624,35 +1709,18 @@ export default function PlanScreen({
                   className="flex-1 overflow-y-auto pr-1.5 space-y-2 min-h-[220px] max-h-[380px] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-white/20" 
                   id="payment-popup-list-container"
                 >
-                  {activeEntries.length === 0 ? (
+                  {groupedItems.length === 0 ? (
                     <div className="text-center py-10 text-text-muted text-xs">
                       Nenhum lançamento planejado para este mês.
                     </div>
                   ) : (
-                    activeEntries.map(entry => {
-                      const isSelected = selectedEntryIds.includes(entry.id);
-                      const isPaid = paidEntryIds.includes(entry.id);
-
-                      // Get nice category label & badges
-                      let categoryLabel = 'Gastos';
-                      let badgeColor = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
-                      let originName = entry.subcategory;
-
-                      if (entry.category === 'cartoes') {
-                        categoryLabel = 'Cartões';
-                        badgeColor = 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-                        const card = planCards.find(c => c.id === entry.cardId);
-                        originName = card ? `${card.name} (${entry.subcategory})` : entry.subcategory;
-                      } else if (entry.category === 'contas') {
-                        categoryLabel = 'Contas';
-                        badgeColor = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-                        const acc = accounts.find(a => a.id === entry.accountId);
-                        originName = acc ? `${acc.name}` : entry.subcategory;
-                      }
+                    groupedItems.map(item => {
+                      const isSelected = item.entryIds.every(id => selectedEntryIds.includes(id));
+                      const isPaid = item.entryIds.every(id => paidEntryIds.includes(id));
 
                       return (
                         <div
-                          key={entry.id}
+                          key={item.id}
                           className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
                             isPaid 
                               ? 'bg-black/30 border-white/5 opacity-50' 
@@ -1660,16 +1728,19 @@ export default function PlanScreen({
                               ? 'bg-brand-primary/10 border-brand-primary/35'
                               : 'bg-white/5 border-white/5 hover:border-white/10'
                           }`}
-                          id={`payment-row-${entry.id}`}
+                          id={`payment-row-${item.id}`}
                         >
                           <div className="flex items-center gap-3 flex-1 min-w-0">
                             {/* Sleek Custom Checkbox for selection (sum) */}
                             <button
                               onClick={() => {
                                 if (isSelected) {
-                                  setSelectedEntryIds(prev => prev.filter(id => id !== entry.id));
+                                  setSelectedEntryIds(prev => prev.filter(id => !item.entryIds.includes(id)));
                                 } else {
-                                  setSelectedEntryIds(prev => [...prev, entry.id]);
+                                  setSelectedEntryIds(prev => {
+                                    const filtered = prev.filter(id => !item.entryIds.includes(id));
+                                    return [...filtered, ...item.entryIds];
+                                  });
                                 }
                               }}
                               className={`w-4 h-4 rounded flex items-center justify-center transition-all border cursor-pointer focus:outline-none ${
@@ -1678,7 +1749,7 @@ export default function PlanScreen({
                                   : 'bg-black/40 border-white/20 hover:border-brand-primary/60 text-transparent'
                               }`}
                               title="Selecionar para somatório"
-                              id={`check-select-${entry.id}`}
+                              id={`check-select-${item.id}`}
                             >
                               {isSelected && (
                                 <svg className="w-2.5 h-2.5 stroke-[3.5]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1691,20 +1762,20 @@ export default function PlanScreen({
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className={`text-xs font-bold text-text-high truncate ${isPaid ? 'line-through decoration-rose-500/80 text-text-muted' : ''}`}>
-                                  {entry.name}
+                                  {item.name}
                                 </span>
-                                {entry.type === 'income' && (
+                                {item.isIncome && (
                                   <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
                                     Receita
                                   </span>
                                 )}
                               </div>
                               <div className="flex items-center gap-1.5 mt-1 text-[9px] uppercase tracking-wider text-text-muted font-semibold flex-wrap">
-                                <span className={`px-1.5 py-0.5 rounded-full border ${badgeColor}`}>
-                                  {categoryLabel}
+                                <span className={`px-1.5 py-0.5 rounded-full border ${item.badgeColor}`}>
+                                  {item.category === 'cartoes' ? 'Cartões' : item.category === 'contas' ? 'Contas' : 'Gastos'}
                                 </span>
                                 <span className="text-text-muted/60">•</span>
-                                <span className="truncate max-w-[150px]">{originName}</span>
+                                <span className="truncate max-w-[150px]">{item.originName}</span>
                               </div>
                             </div>
                           </div>
@@ -1714,20 +1785,23 @@ export default function PlanScreen({
                             <span className={`text-xs font-mono font-bold whitespace-nowrap ${
                               isPaid 
                                 ? 'line-through decoration-rose-500/80 text-text-muted/50' 
-                                : entry.type === 'income' 
+                                : item.isIncome 
                                 ? 'text-emerald-400' 
                                 : 'text-rose-400'
                             }`}>
-                              {entry.type === 'income' ? '+' : '-'} {formatBRL(entry.amount)}
+                              {item.isIncome ? '+' : '-'} {formatBRL(item.amount)}
                             </span>
 
                             {/* Sleek Custom Button for Paid toggle */}
                             <button
                               onClick={() => {
                                 if (isPaid) {
-                                  setPaidEntryIds(prev => prev.filter(id => id !== entry.id));
+                                  setPaidEntryIds(prev => prev.filter(id => !item.entryIds.includes(id)));
                                 } else {
-                                  setPaidEntryIds(prev => [...prev, entry.id]);
+                                  setPaidEntryIds(prev => {
+                                    const filtered = prev.filter(id => !item.entryIds.includes(id));
+                                    return [...filtered, ...item.entryIds];
+                                  });
                                 }
                               }}
                               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all duration-200 text-left focus:outline-none cursor-pointer ${
@@ -1736,7 +1810,7 @@ export default function PlanScreen({
                                   : 'bg-white/5 border-white/10 text-text-muted hover:border-white/20 hover:bg-white/10'
                               }`}
                               title="Marcar como Pago"
-                              id={`check-paid-${entry.id}`}
+                              id={`check-paid-${item.id}`}
                             >
                               <div className={`w-2.5 h-2.5 rounded-full flex items-center justify-center border transition-all ${
                                 isPaid ? 'bg-emerald-400 border-emerald-400' : 'border-white/30'
@@ -1760,7 +1834,7 @@ export default function PlanScreen({
                 <div className="bg-black/30 border border-outline-variant/30 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2 shadow-inner" id="payment-popup-footer">
                   <div className="flex flex-col text-center sm:text-left">
                     <span className="text-[9px] text-text-muted uppercase tracking-wider font-bold">
-                      Somatório dos Itens Selecionados ({selectedEntryIds.length})
+                      Somatório dos Itens Selecionados ({selectedGroupedCount})
                     </span>
                     <span className="text-xs font-mono font-bold text-white mt-0.5">
                       Total: <span className="text-brand-primary">{formatBRL(selectedSum)}</span>

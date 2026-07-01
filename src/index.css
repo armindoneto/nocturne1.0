@@ -76,21 +76,32 @@ button {
 }
 
 /* Light mode overrides to handle hardcoded tailwind classes */
-.light .text-white {
+.light .text-white:not(button):not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500):not(.bg-red-600):not(.bg-rose-600):not(.bg-emerald-600) {
   color: var(--text-high) !important;
 }
-.light .text-white\/90 {
+.light .text-white\/90:not(button):not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500) {
   color: rgba(15, 23, 42, 0.9) !important;
 }
-.light .text-white\/80 {
+.light .text-white\/80:not(button):not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500) {
   color: rgba(15, 23, 42, 0.8) !important;
 }
-.light .text-white\/70 {
+.light .text-white\/70:not(button):not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500) {
   color: rgba(15, 23, 42, 0.7) !important;
 }
-.light .text-zinc-100,
-.light .text-zinc-200,
-.light .text-zinc-300 {
+.light .text-zinc-100:not(button):not(.bg-rose-500):not(.bg-red-500),
+.light .text-zinc-200:not(button):not(.bg-rose-500):not(.bg-red-500),
+.light .text-zinc-300:not(button):not(.bg-rose-500):not(.bg-red-500) {
+  color: var(--text-high) !important;
+}
+.light .hover\:text-white:hover:not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500):not(.bg-rose-600):not(.bg-red-600) {
+  color: var(--text-high) !important;
+}
+.light .hover\:text-zinc-100:hover,
+.light .hover\:text-zinc-200:hover,
+.light .hover\:text-zinc-300:hover,
+.light .hover\:text-white\/90:hover,
+.light .hover\:text-white\/80:hover,
+.light .hover\:text-white\/70:hover {
   color: var(--text-high) !important;
 }
 .light .text-zinc-400 {
