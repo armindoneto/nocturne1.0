@@ -78,6 +78,7 @@ export interface PlanEntry {
   isInstallment?: boolean;
   installmentsCount?: number;
   currentInstallment?: number;
+  paid?: boolean;
 }
 
 export type ActiveTab = 'inicio' | 'transacoes' | 'cartoes' | 'perfil';

@@ -1786,7 +1786,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-6 text-center" id="loading-screen">
         <div className="w-10 h-10 border-2 border-brand-primary/20 border-t-brand-primary rounded-full animate-spin mb-4" />
-        <p className="text-xs font-mono text-text-muted tracking-wider uppercase">Verificando sessão segura...</p>
+        <p className="text-xs font-mono text-text-muted tracking-wider uppercase">VERIFICANDO USUÁRIO</p>
       </div>
     );
   }
@@ -1882,7 +1882,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                 activeScreen === 'budget'
                   ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-white hover:bg-white/5'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
               }`}
               id="btn-sidebar-budget"
             >
@@ -1896,7 +1896,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                 activeScreen === 'contas'
                   ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-white hover:bg-white/5'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
               }`}
               id="btn-sidebar-contas"
             >
@@ -1910,7 +1910,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                 activeScreen === 'plan'
                   ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-white hover:bg-white/5'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
               }`}
               id="btn-sidebar-plan"
             >
@@ -1924,7 +1924,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                 activeScreen === 'temp'
                   ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-white hover:bg-white/5'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
               }`}
               id="btn-sidebar-temp"
             >
@@ -1938,7 +1938,7 @@ export default function App() {
               className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                 activeScreen === 'config'
                   ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-white hover:bg-white/5'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
               }`}
               id="btn-sidebar-config"
             >
@@ -2534,7 +2534,7 @@ export default function App() {
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão v8.1.2 • Nocturne
+                Versão v8.1.3 • Nocturne
               </div>
             </div>
           </motion.div>
@@ -2951,7 +2951,7 @@ export default function App() {
                   <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
                 </div>
                 <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
-                  v8.1.2
+                  v8.1.3
                 </span>
               </div>
 
@@ -2990,7 +2990,7 @@ export default function App() {
                     type="button"
                     disabled={isCheckingUpdate}
                     onClick={checkServiceWorkerUpdate}
-                    className="bg-white/5 hover:bg-white/10 active:bg-white/20 text-white border border-outline-variant/40 hover:border-outline-variant/60 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                    className="bg-white/5 hover:bg-white/10 active:bg-white/20 text-text-high border border-outline-variant/40 hover:border-outline-variant/60 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
                     id="btn-check-sw-update"
                   >
                     {isCheckingUpdate ? (
@@ -3067,7 +3067,7 @@ export default function App() {
         {/* Discrete footer for applet authoring */}
         {activeScreen === 'config' && (
           <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-            2026 - v8.1.2 - Desenvolvido por Armindo Neto
+            2026 - v8.1.3 - Desenvolvido por Armindo Neto
           </div>
         )}
       </main>
@@ -3080,7 +3080,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setActiveScreen('budget')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'budget' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'budget' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-budget"
         >
           <Wallet size={18} className={activeScreen === 'budget' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
@@ -3090,7 +3090,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setActiveScreen('contas')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'contas' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'contas' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-contas"
         >
           <Landmark size={18} className={activeScreen === 'contas' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
@@ -3100,7 +3100,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setActiveScreen('plan')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'plan' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'plan' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-plan"
         >
           <Calendar size={18} className={activeScreen === 'plan' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
@@ -3110,7 +3110,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setActiveScreen('temp')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'temp' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'temp' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-temp"
         >
           <Clock size={18} className={activeScreen === 'temp' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
@@ -3120,7 +3120,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => setActiveScreen('config')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'config' ? 'text-brand-primary' : 'text-text-muted hover:text-white'}`}
+          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'config' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-config"
         >
           <Settings size={18} className={activeScreen === 'config' ? 'scale-110 text-brand-primary transition-transform rotate-45' : 'transition-transform'} />
@@ -3994,7 +3994,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowAddPatrimonyForm(prev => !prev)}
-                  className="w-full bg-white/5 hover:bg-white/10 text-white font-bold uppercase text-[9px] tracking-wider py-2.5 rounded-xl border border-outline-variant/30 hover:border-outline-variant/60 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                  className="w-full bg-white/5 hover:bg-white/10 text-text-high font-bold uppercase text-[9px] tracking-wider py-2.5 rounded-xl border border-outline-variant/30 hover:border-outline-variant/60 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                   id="btn-toggle-add-patrimony-form"
                 >
                   <Plus size={12} />

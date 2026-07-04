@@ -93,7 +93,8 @@ button {
 .light .text-zinc-300:not(button):not(.bg-rose-500):not(.bg-red-500) {
   color: var(--text-high) !important;
 }
-.light .hover\:text-white:hover:not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500):not(.bg-rose-600):not(.bg-red-600) {
+.light .hover\:text-white:hover:not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500):not(.bg-rose-600):not(.bg-red-600),
+.light [class*="hover:text-white"]:hover:not(.bg-rose-500):not(.bg-red-500):not(.bg-emerald-500):not(.bg-rose-600):not(.bg-red-600) {
   color: var(--text-high) !important;
 }
 .light .hover\:text-zinc-100:hover,
@@ -101,7 +102,13 @@ button {
 .light .hover\:text-zinc-300:hover,
 .light .hover\:text-white\/90:hover,
 .light .hover\:text-white\/80:hover,
-.light .hover\:text-white\/70:hover {
+.light .hover\:text-white\/70:hover,
+.light [class*="hover:text-zinc-100"]:hover,
+.light [class*="hover:text-zinc-200"]:hover,
+.light [class*="hover:text-zinc-300"]:hover,
+.light [class*="hover:text-white/90"]:hover,
+.light [class*="hover:text-white/80"]:hover,
+.light [class*="hover:text-white/70"]:hover {
   color: var(--text-high) !important;
 }
 .light .text-zinc-400 {
@@ -180,6 +187,38 @@ button {
 }
 .light .text-zinc-300 {
   color: var(--text-mid) !important;
+}
+
+/* bg-black opacity classes overrides for light theme */
+.light .bg-black\/5 {
+  background-color: rgba(15, 23, 42, 0.03) !important;
+}
+.light .bg-black\/10 {
+  background-color: rgba(15, 23, 42, 0.04) !important;
+}
+.light .bg-black\/15 {
+  background-color: rgba(15, 23, 42, 0.06) !important;
+}
+.light .bg-black\/20 {
+  background-color: rgba(15, 23, 42, 0.08) !important;
+}
+.light .bg-black\/25 {
+  background-color: rgba(15, 23, 42, 0.1) !important;
+}
+.light .bg-black\/30 {
+  background-color: rgba(15, 23, 42, 0.12) !important;
+}
+.light .bg-black\/35 {
+  background-color: rgba(15, 23, 42, 0.14) !important;
+}
+.light .bg-black\/40 {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+.light .hover\:bg-black\/35:hover {
+  background-color: rgba(15, 23, 42, 0.1) !important;
+}
+.light .hover\:bg-black\/40:hover {
+  background-color: rgba(15, 23, 42, 0.1) !important;
 }
 
 /* Inputs, Selects and Textareas */

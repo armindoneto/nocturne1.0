@@ -131,7 +131,10 @@ export default function PlanScreen({
   const handleOpenPaymentPopup = (monthStr: string) => {
     setPaymentPopupMonth(monthStr);
     setSelectedEntryIds([]);
-    setPaidEntryIds([]);
+    const initialPaidIds = planEntries
+      .filter(entry => entry.month === monthStr && entry.paid)
+      .map(entry => entry.id);
+    setPaidEntryIds(initialPaidIds);
     setIsPaymentPopupOpen(true);
   };
 
@@ -402,7 +405,8 @@ export default function PlanScreen({
       month: nextMonth,
       currentInstallment: entry.isInstallment && entry.currentInstallment && entry.installmentsCount
         ? Math.min(entry.currentInstallment + 1, entry.installmentsCount)
-        : entry.currentInstallment
+        : entry.currentInstallment,
+      paid: false
     };
     
     if (entry.category === 'cartoes' && entry.cardId) {
@@ -447,7 +451,8 @@ export default function PlanScreen({
       month: nextMonth,
       currentInstallment: entry.isInstallment && entry.currentInstallment && entry.installmentsCount
         ? Math.min(entry.currentInstallment + 1, entry.installmentsCount)
-        : entry.currentInstallment
+        : entry.currentInstallment,
+      paid: false
     }));
 
     if (category === 'cartoes' && cardId) {
@@ -507,7 +512,8 @@ export default function PlanScreen({
         month: nextMonth,
         currentInstallment: entry.isInstallment && entry.currentInstallment && entry.installmentsCount
           ? Math.min(entry.currentInstallment + 1, entry.installmentsCount)
-          : entry.currentInstallment
+          : entry.currentInstallment,
+        paid: false
       }));
       setPlanEntries(prev => [...prev, ...duplicated]);
       duplicatedCount = targetEntries.length;
@@ -1665,7 +1671,7 @@ export default function PlanScreen({
 
           const selectedSum = activeEntries
             .filter(e => selectedEntryIds.includes(e.id))
-            .reduce((sum, e) => sum + e.amount, 0);
+            .reduce((sum, e) => sum + (e.type === 'income' ? e.amount : -e.amount), 0);
 
           const selectedGroupedCount = groupedItems.filter(item => item.entryIds.every(id => selectedEntryIds.includes(id))).length;
 
@@ -1797,11 +1803,23 @@ export default function PlanScreen({
                               onClick={() => {
                                 if (isPaid) {
                                   setPaidEntryIds(prev => prev.filter(id => !item.entryIds.includes(id)));
+                                  setPlanEntries(prev => prev.map(entry => {
+                                    if (item.entryIds.includes(entry.id)) {
+                                      return { ...entry, paid: false };
+                                    }
+                                    return entry;
+                                  }));
                                 } else {
                                   setPaidEntryIds(prev => {
                                     const filtered = prev.filter(id => !item.entryIds.includes(id));
                                     return [...filtered, ...item.entryIds];
                                   });
+                                  setPlanEntries(prev => prev.map(entry => {
+                                    if (item.entryIds.includes(entry.id)) {
+                                      return { ...entry, paid: true };
+                                    }
+                                    return entry;
+                                  }));
                                 }
                               }}
                               className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all duration-200 text-left focus:outline-none cursor-pointer ${
@@ -1846,6 +1864,14 @@ export default function PlanScreen({
                       onClick={() => {
                         setSelectedEntryIds([]);
                         setPaidEntryIds([]);
+                        if (paymentPopupMonth) {
+                          setPlanEntries(prev => prev.map(entry => {
+                            if (entry.month === paymentPopupMonth) {
+                              return { ...entry, paid: false };
+                            }
+                            return entry;
+                          }));
+                        }
                       }}
                       className="px-2.5 py-1.5 rounded-xl text-[10px] font-bold border border-white/10 hover:bg-white/5 text-text-muted hover:text-white transition-colors cursor-pointer"
                       id="btn-payment-popup-reset"
