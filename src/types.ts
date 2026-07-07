@@ -96,3 +96,23 @@ export interface PlanScreenProps {
   setActivePlanMonth?: (value: string | ((prev: string) => string)) => void;
 }
 
+export interface FuelEntry {
+  id: string;
+  date: string; // DD/MM/AA
+  km: number; // Km (float)
+  qty: number; // Litros (float)
+  value: number; // Valor (float)
+}
+
+export interface ContrachequeEntry {
+  id: string;
+  name: string;
+  amount: number;
+  month: string; // "YYYY-MM"
+  type: 'receita' | 'despesa';
+  isAdiantado?: boolean;
+  isAtrasado?: boolean;
+}
+
+
+

@@ -1260,8 +1260,8 @@ export default function PlanScreen({
   return (
     <div className="flex flex-col h-full overflow-y-auto pb-24" id="plan-screen-container">
       
-      {/* 1. DISCREET DESKTOP MONTH NAVIGATOR (Arrows only, no repeated month names) */}
-      <div className="hidden lg:flex items-center justify-between mb-5" id="plan-desktop-header">
+      {/* 1. DISCREET DESKTOP MONTH NAVIGATOR (Arrows only, no repeated month names) - Hidden since it is now in the global header */}
+      <div className="hidden" id="plan-desktop-header">
         <h2 className="text-lg font-black tracking-wider text-white uppercase font-display">
           Planejamento Mensal
         </h2>

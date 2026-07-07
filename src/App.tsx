@@ -25,8 +25,12 @@ import {
   Edit3,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
   CheckCircle2,
   RotateCcw,
+  Wrench,
   PlusCircle,
   Percent,
   Banknote,
@@ -42,10 +46,17 @@ import {
   Settings,
   RefreshCw,
   Sparkles,
-  History
+  History,
+  Briefcase,
+  ArrowLeft,
+  Receipt,
+  Plane,
+  ListOrdered,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard } from './types';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
 import type { FirebaseUser } from './firebase';
@@ -61,6 +72,7 @@ import {
 import TransactionForm from './components/TransactionForm';
 import CardItem from './components/CardItem';
 import PlanScreen from './components/PlanScreen';
+import ContrachequeScreen from './components/ContrachequeScreen';
 
 export const ACCOUNT_COLORS = [
   { value: 'brand-primary', label: 'Dourado', bgClass: 'bg-brand-primary' },
@@ -174,6 +186,10 @@ function AccountItem({ acc, onEdit, onDelete, onAddBalance, onSubBalance }: Acco
   );
 }
 
+const FABIcon = ({ size = 16, className = '' }: { size?: number, className?: string }) => {
+  return <Briefcase size={size} className={className} />;
+};
+
 export default function App() {
   // --- Firebase Auth & Synced States ---
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -181,6 +197,7 @@ export default function App() {
   const [dataLoadedFromFirestore, setDataLoadedFromFirestore] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [firestoreWriteError, setFirestoreWriteError] = useState<string | null>(null);
 
   // --- Service Worker & Update States ---
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -320,7 +337,11 @@ export default function App() {
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4'>('budget');
+  const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'system'>('finance');
+  const [isFinanceExpanded, setIsFinanceExpanded] = useState(true);
+  const [isWorkExpanded, setIsWorkExpanded] = useState(true);
+  const [showMobileSubmenu, setShowMobileSubmenu] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountBalance, setNewAccountBalance] = useState('');
   const [newAccountColor, setNewAccountColor] = useState<string>('brand-primary');
@@ -423,12 +444,220 @@ export default function App() {
       { id: 'pe-4', monthYear: '05/2026', amount: 62300.00 },
     ];
   });
+  const [fuelEntries, setFuelEntries] = useState<FuelEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_fuel_entries');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return [];
+  });
   const [isPatrimonyModalOpen, setIsPatrimonyModalOpen] = useState(false);
   const [showAddPatrimonyForm, setShowAddPatrimonyForm] = useState(false);
   const [newPatrimonyMonthYear, setNewPatrimonyMonthYear] = useState('');
   const [newPatrimonyAmount, setNewPatrimonyAmount] = useState('');
 
+  // --- Fuel Module States ---
+  const [isFuelFormOpen, setIsFuelFormOpen] = useState(false);
+  const [fuelDate, setFuelDate] = useState(() => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yy = String(today.getFullYear()).slice(-2);
+    return `${dd}/${mm}/${yy}`;
+  });
+  const [fuelKm, setFuelKm] = useState('');
+  const [fuelQty, setFuelQty] = useState('');
+  const [fuelValue, setFuelValue] = useState('');
+  const [fuelError, setFuelError] = useState<string | null>(null);
+  const [fuelSubView, setFuelSubView] = useState<'list' | 'analysis'>('list');
+  const [simulatedConsumption, setSimulatedConsumption] = useState<string>('');
+  const [fuelEntryToDelete, setFuelEntryToDelete] = useState<string | null>(null);
+
+  // --- Maintenance States ---
+  const [lastMaintenance, setLastMaintenance] = useState<{ date: string; km: string }>(() => {
+    const saved = localStorage.getItem('nocturne_last_maintenance');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (_) {}
+    }
+    return { date: '', km: '' };
+  });
+
+  // --- Contracheque States ---
+  const [contrachequeEntries, setContrachequeEntries] = useState<ContrachequeEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_contracheque_entries');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as ContrachequeEntry[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  const [contrachequeMonth, setContrachequeMonth] = useState<string>(() => {
+    const today = new Date();
+    let year = today.getFullYear();
+    let month = today.getMonth() + 2; // subsequent month (+1 because 0-indexed, +1 because next)
+    if (month > 12) {
+      month = month - 12;
+      year += 1;
+    }
+    const monthFormatted = month < 10 ? `0${month}` : `${month}`;
+    return `${year}-${monthFormatted}`;
+  });
+  const [contrachequeSearchQuery, setContrachequeSearchQuery] = useState('');
+  const [contrachequeIsResumoView, setContrachequeIsResumoView] = useState(false);
+
+  // --- Plan States ---
+  const [planMonth, setPlanMonth] = useState<string>(() => {
+    const saved = localStorage.getItem('nocturne_active_plan_month');
+    return saved || '2026-06';
+  });
+  const [planSearchQuery, setPlanSearchQuery] = useState('');
+
+  useEffect(() => {
+    if (activePlanMonth) {
+      setPlanMonth(activePlanMonth);
+      const [y, m] = activePlanMonth.split('-');
+      setPlanSearchQuery(`${m}/${y}`);
+    }
+  }, [activePlanMonth]);
+
+  useEffect(() => {
+    if (contrachequeMonth) {
+      const [y, m] = contrachequeMonth.split('-');
+      setContrachequeSearchQuery(`${m}/${y}`);
+    }
+  }, [contrachequeMonth]);
+
+  const handleContrachequeSearchChange = (val: string) => {
+    let clean = val.replace(/[^\d/]/g, '');
+    if (clean.length > 2 && !clean.includes('/')) {
+      clean = clean.slice(0, 2) + '/' + clean.slice(2);
+    }
+    clean = clean.slice(0, 7);
+    setContrachequeSearchQuery(clean);
+
+    if (clean.length === 7) {
+      const match = clean.match(/^(\d{2})\/(\d{4})$/);
+      if (match) {
+        const m = parseInt(match[1], 10);
+        const y = parseInt(match[2], 10);
+        if (m >= 1 && m <= 12 && y >= 1900 && y <= 2100) {
+          const monthFormatted = m < 10 ? `0${m}` : `${m}`;
+          const targetMonth = `${y}-${monthFormatted}`;
+          setContrachequeMonth(targetMonth);
+          triggerToast(`Exibindo mês ${clean} no Contracheque!`);
+        } else {
+          triggerToast('Mês inválido (01 a 12).');
+        }
+      }
+    }
+  };
+
+  const handlePlanSearchChange = (val: string) => {
+    let clean = val.replace(/[^\d/]/g, '');
+    if (clean.length > 2 && !clean.includes('/')) {
+      clean = clean.slice(0, 2) + '/' + clean.slice(2);
+    }
+    clean = clean.slice(0, 7);
+    setPlanSearchQuery(clean);
+
+    if (clean.length === 7) {
+      const match = clean.match(/^(\d{2})\/(\d{4})$/);
+      if (match) {
+        const m = parseInt(match[1], 10);
+        const y = parseInt(match[2], 10);
+        if (m >= 1 && m <= 12 && y >= 1900 && y <= 2100) {
+          const monthFormatted = m < 10 ? `0${m}` : `${m}`;
+          const targetMonth = `${y}-${monthFormatted}`;
+          setActivePlanMonth(targetMonth);
+          triggerToast(`Planejamento de ${clean} exibido!`);
+        } else {
+          triggerToast('Mês inválido (01 a 12).');
+        }
+      }
+    }
+  };
+
+  const handleContrachequePrevMonth = () => {
+    const [yearStr, monthNumStr] = contrachequeMonth.split('-');
+    let year = parseInt(yearStr, 10);
+    let month = parseInt(monthNumStr, 10);
+    month -= 1;
+    if (month < 1) {
+      month = 12;
+      year -= 1;
+    }
+    const monthFormatted = month < 10 ? `0${month}` : `${month}`;
+    setContrachequeMonth(`${year}-${monthFormatted}`);
+  };
+
+  const handleContrachequeNextMonth = () => {
+    const [yearStr, monthNumStr] = contrachequeMonth.split('-');
+    let year = parseInt(yearStr, 10);
+    let month = parseInt(monthNumStr, 10);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    const monthFormatted = month < 10 ? `0${month}` : `${month}`;
+    setContrachequeMonth(`${year}-${monthFormatted}`);
+  };
+
+  const handlePlanPrevMonth = () => {
+    const [yearStr, monthNumStr] = activePlanMonth.split('-');
+    let year = parseInt(yearStr, 10);
+    let month = parseInt(monthNumStr, 10);
+    month -= 1;
+    if (month < 1) {
+      month = 12;
+      year -= 1;
+    }
+    const monthFormatted = month < 10 ? `0${month}` : `${month}`;
+    setActivePlanMonth(`${year}-${monthFormatted}`);
+  };
+
+  const handlePlanNextMonth = () => {
+    const [yearStr, monthNumStr] = activePlanMonth.split('-');
+    let year = parseInt(yearStr, 10);
+    let month = parseInt(monthNumStr, 10);
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+    const monthFormatted = month < 10 ? `0${month}` : `${month}`;
+    setActivePlanMonth(`${year}-${monthFormatted}`);
+  };
+
+
+  const [maintDateInput, setMaintDateInput] = useState(() => {
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yy = String(today.getFullYear()).slice(-2);
+    return `${dd}/${mm}/${yy}`;
+  });
+  const [maintKmInput, setMaintKmInput] = useState('');
+
   // Synchronize localStorage
+  useEffect(() => {
+    localStorage.setItem('nocturne_contracheque_entries', JSON.stringify(contrachequeEntries));
+  }, [contrachequeEntries]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_last_maintenance', JSON.stringify(lastMaintenance));
+  }, [lastMaintenance]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_fuel_entries', JSON.stringify(fuelEntries));
+  }, [fuelEntries]);
+
   useEffect(() => {
     localStorage.setItem('nocturne_user', JSON.stringify(user));
   }, [user]);
@@ -534,13 +763,27 @@ export default function App() {
               triggerToast('Modo Offline: Operando com dados locais.');
               return;
             }
-            handleFirestoreError(getErr, 'get', pathStr);
+            
+            console.error("Firestore getDoc failed:", getErr);
+            const errStr = getErr instanceof Error ? getErr.message : String(getErr);
+            let userFriendlyMsg = `Falha ao carregar dados da nuvem: ${errStr}`;
+            
+            if (errStr.toLowerCase().includes('resource-exhausted') || errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('limit')) {
+              userFriendlyMsg = 'Limite de cota de leitura do Firebase atingido (Limite gratuito diário excedido). Seus dados estão sendo exibidos e gravados apenas localmente em seu navegador.';
+            } else if (errStr.toLowerCase().includes('permission-denied') || errStr.toLowerCase().includes('permission')) {
+              userFriendlyMsg = 'Permissão de leitura negada no Firebase. Por favor, tente sair e entrar novamente na sua conta.';
+            }
+            
+            setFirestoreWriteError(userFriendlyMsg);
+            setIsOffline(true);
+            setDataLoadedFromFirestore(true);
+            setAuthLoading(false);
             return;
           }
 
           if (docSnap.exists()) {
             const data = docSnap.data();
-            if (data.user) setUser(data.user);
+            if (data.user) setUser(prev => ({ ...prev, ...data.user }));
             if (data.accounts) {
               const loadedAccs = (data.accounts as Account[]).map(acc => {
                 let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
@@ -549,11 +792,27 @@ export default function App() {
                 }
                 return updated;
               });
-              setAccounts(loadedAccs);
+              setAccounts(prev => {
+                const merged = [...loadedAccs];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
             }
             if (data.budgetAccounts) {
               const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
-              setBudgetAccounts(loadedBudgetAccs);
+              setBudgetAccounts(prev => {
+                const merged = [...loadedBudgetAccs];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
             }
             if (data.transactions) {
               const loadedTxs = (data.transactions as Transaction[]).map(tx => {
@@ -563,15 +822,53 @@ export default function App() {
                 }
                 return updated;
               });
-              setTransactions(loadedTxs);
+              setTransactions(prev => {
+                const merged = [...loadedTxs];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
             }
-            if (data.cards) setCards(data.cards);
+            if (data.cards) {
+              setCards(prev => {
+                const merged = [...data.cards];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
+            }
             if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
             if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
             if (data.periodEnd !== undefined) setPeriodEnd(data.periodEnd);
             if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
-            if (data.tempCategories) setTempCategories(data.tempCategories);
-            if (data.patrimonyHistory) setPatrimonyHistory(data.patrimonyHistory);
+            if (data.tempCategories) {
+              setTempCategories(prev => {
+                const merged = [...data.tempCategories];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
+            }
+            if (data.patrimonyHistory) {
+              setPatrimonyHistory(prev => {
+                const merged = [...data.patrimonyHistory];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
+            }
             let finalPlanEntries = data.planEntries || [];
             let finalPlanCards = data.planCards || [];
 
@@ -582,10 +879,53 @@ export default function App() {
               triggerToast('Banco de cartões planejado resetado com sucesso!');
             }
 
-            setPlanEntries(finalPlanEntries);
-            if (data.planIncomes) setPlanIncomes(data.planIncomes);
-            setPlanCards(finalPlanCards);
+            setPlanEntries(prev => {
+              const merged = [...finalPlanEntries];
+              prev.forEach(localItem => {
+                if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                  merged.push(localItem);
+                }
+              });
+              return merged;
+            });
+            if (data.planIncomes) {
+              setPlanIncomes(prev => ({ ...prev, ...data.planIncomes }));
+            }
+            setPlanCards(prev => {
+              const merged = [...finalPlanCards];
+              prev.forEach(localItem => {
+                if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                  merged.push(localItem);
+                }
+              });
+              return merged;
+            });
             if (data.activePlanMonth !== undefined) setActivePlanMonth(data.activePlanMonth);
+            if (data.fuelEntries) {
+              setFuelEntries(prev => {
+                const merged = [...data.fuelEntries];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged.sort((a, b) => a.km - b.km);
+              });
+            }
+            if (data.lastMaintenance !== undefined) {
+              setLastMaintenance(data.lastMaintenance);
+            }
+            if (data.contrachequeEntries !== undefined) {
+              setContrachequeEntries(prev => {
+                const merged = [...data.contrachequeEntries];
+                prev.forEach(localItem => {
+                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
+                    merged.push(localItem);
+                  }
+                });
+                return merged;
+              });
+            }
           } else {
             // Document doesn't exist, migrate or initialize
             const initialSyncData = {
@@ -600,6 +940,9 @@ export default function App() {
               periodTotal,
               tempCategories,
               patrimonyHistory,
+              fuelEntries,
+              lastMaintenance,
+              contrachequeEntries,
               planEntries,
               planIncomes,
               planCards,
@@ -611,6 +954,7 @@ export default function App() {
             try {
               await setDoc(docRef, JSON.parse(JSON.stringify(initialSyncData)));
               setIsOffline(false);
+              setFirestoreWriteError(null);
             } catch (writeErr) {
               const isConnErr = writeErr instanceof Error && (
                 writeErr.message.includes('unavailable') || 
@@ -625,7 +969,20 @@ export default function App() {
                 triggerToast('Modo Offline: Operando com dados locais.');
                 return;
               }
-              handleFirestoreError(writeErr, 'write', pathStr);
+              
+              console.error("Firestore init setDoc failed:", writeErr);
+              const errStr = writeErr instanceof Error ? writeErr.message : String(writeErr);
+              let userFriendlyMsg = `Falha ao salvar dados iniciais na nuvem: ${errStr}`;
+              
+              if (errStr.toLowerCase().includes('resource-exhausted') || errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('limit')) {
+                userFriendlyMsg = 'Limite de cota de gravação do Firebase atingido (Limite gratuito diário excedido). Seus dados estão sendo gravados localmente em seu navegador e serão sincronizados quando a cota reiniciar.';
+              } else if (errStr.toLowerCase().includes('permission-denied') || errStr.toLowerCase().includes('permission')) {
+                userFriendlyMsg = 'Permissão de gravação negada no Firebase. Por favor, tente sair e entrar novamente na sua conta.';
+              }
+              
+              setFirestoreWriteError(userFriendlyMsg);
+              setDataLoadedFromFirestore(true);
+              setAuthLoading(false);
               return;
             }
           }
@@ -709,6 +1066,9 @@ export default function App() {
           periodTotal,
           tempCategories,
           patrimonyHistory,
+          fuelEntries,
+          lastMaintenance,
+          contrachequeEntries,
           planEntries,
           planIncomes,
           planCards,
@@ -720,6 +1080,7 @@ export default function App() {
         try {
           await setDoc(docRef, JSON.parse(JSON.stringify(dataToSave)));
           setIsOffline(false);
+          setFirestoreWriteError(null);
         } catch (writeErr) {
           const isConnErr = writeErr instanceof Error && (
             writeErr.message.includes('unavailable') || 
@@ -731,7 +1092,18 @@ export default function App() {
             setIsOffline(true);
             return;
           }
-          handleFirestoreError(writeErr, 'write', pathStr);
+          
+          console.error("Firestore write failed:", writeErr);
+          const errStr = writeErr instanceof Error ? writeErr.message : String(writeErr);
+          let userFriendlyMsg = `Falha ao salvar dados na nuvem: ${errStr}`;
+          
+          if (errStr.toLowerCase().includes('resource-exhausted') || errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('limit')) {
+            userFriendlyMsg = 'Limite de cota de gravação do Firebase atingido (Limite gratuito diário excedido). Seus dados estão sendo gravados apenas localmente em seu navegador e serão sincronizados automaticamente quando a cota reiniciar.';
+          } else if (errStr.toLowerCase().includes('permission-denied') || errStr.toLowerCase().includes('permission')) {
+            userFriendlyMsg = 'Permissão de gravação negada no Firebase. Por favor, tente sair e entrar novamente na sua conta.';
+          }
+          
+          setFirestoreWriteError(userFriendlyMsg);
         }
       } catch (err) {
         console.error('Error saving data to Firestore:', err);
@@ -757,7 +1129,10 @@ export default function App() {
     patrimonyHistory,
     planEntries,
     planIncomes,
-    planCards
+    planCards,
+    fuelEntries,
+    lastMaintenance,
+    contrachequeEntries
   ]);
 
   // One-time automatic migration to clean up duplicate cards in Firebase / LocalStorage
@@ -984,6 +1359,18 @@ export default function App() {
   const totalBalance = useMemo(() => {
     return accounts.reduce((acc, curr) => acc + curr.balance, 0);
   }, [accounts]);
+
+  const contrachequeTotalNet = useMemo(() => {
+    return contrachequeEntries
+      .reduce((acc, entry) => {
+        if (entry.type === 'receita') {
+          return acc + entry.amount;
+        } else if (entry.type === 'despesa') {
+          return acc - entry.amount;
+        }
+        return acc;
+      }, 0);
+  }, [contrachequeEntries]);
 
   const remainingTotalPeriodBudget = useMemo(() => {
     if (!periodActive) return periodTotal;
@@ -1680,6 +2067,7 @@ export default function App() {
         if (backupData['nocturne_period_total'] !== undefined) setPeriodTotal(backupData['nocturne_period_total'] ? parseFloat(backupData['nocturne_period_total']!) : 0);
         
         setActiveScreen('budget');
+        setActiveModule('finance');
       } catch (err) {
         triggerToast('Falha ao processar arquivo de backup.');
         console.error(err);
@@ -1872,75 +2260,248 @@ export default function App() {
           </div>
 
           {/* Navigation Links */}
-          <nav className="space-y-1.5" id="desktop-sidebar-nav">
+          <nav className="space-y-2 select-none" id="desktop-sidebar-nav">
+            {/* FINANCE MODULE (Collapsible) */}
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFinanceExpanded(!isFinanceExpanded);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                  activeModule === 'finance'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
+                    : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
+                }`}
+                id="btn-sidebar-module-finance"
+              >
+                <div className="flex items-center gap-3">
+                  <DollarSign size={16} />
+                  <span>FINANCE</span>
+                </div>
+                {isFinanceExpanded ? <ChevronUp size={14} className="text-text-muted" /> : <ChevronDown size={14} className="text-text-muted" />}
+              </button>
+
+              {/* Submenus under FINANCE */}
+              <AnimatePresence initial={false}>
+                {isFinanceExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden pl-4 space-y-1"
+                    id="finance-submenu-container"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('budget');
+                        setActiveTab('transacoes');
+                        setActiveModule('finance');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'budget'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-budget"
+                    >
+                      <Wallet size={14} />
+                      <span>BUDGET</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('contas');
+                        setActiveModule('finance');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'contas'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-contas"
+                    >
+                      <Landmark size={14} />
+                      <span>CONTAS</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('plan');
+                        setActiveModule('finance');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'plan'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-plan"
+                    >
+                      <Calendar size={14} />
+                      <span>PLAN</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('temp');
+                        setActiveModule('finance');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'temp'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-temp"
+                    >
+                      <Clock size={14} />
+                      <span>TEMP</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* WORK MODULE (Collapsible) */}
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWorkExpanded(!isWorkExpanded);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                  activeModule === 'fab'
+                    ? 'bg-brand-primary/10 text-brand-primary border-brand-primary/10'
+                    : 'text-text-muted hover:text-text-high hover:bg-white/5 border-transparent'
+                }`}
+                id="btn-sidebar-module-work"
+              >
+                <div className="flex items-center gap-3">
+                  <FABIcon size={16} />
+                  <span>WORK</span>
+                </div>
+                {isWorkExpanded ? <ChevronUp size={14} className="text-text-muted" /> : <ChevronDown size={14} className="text-text-muted" />}
+              </button>
+
+              {/* Submenus under WORK */}
+              <AnimatePresence initial={false}>
+                {isWorkExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden pl-4 space-y-1"
+                    id="work-submenu-container"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('contracheque');
+                        setActiveModule('fab');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'contracheque'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-contracheque"
+                    >
+                      <Receipt size={14} />
+                      <span>CONTRACHEQUE</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('missoes');
+                        setActiveModule('fab');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'missoes'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-missoes"
+                    >
+                      <Plane size={14} />
+                      <span>MISSÕES</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('me4');
+                        setActiveModule('fab');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'me4'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-me4"
+                    >
+                      <ListOrdered size={14} />
+                      <span>ME4</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* FUEL MODULE */}
             <button
               type="button"
               onClick={() => {
-                setActiveScreen('budget');
-                setActiveTab('transacoes');
+                setActiveScreen('fuel');
+                setActiveModule('fuel');
               }}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
-                activeScreen === 'budget'
-                  ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                activeModule === 'fuel'
+                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
               }`}
-              id="btn-sidebar-budget"
+              id="btn-sidebar-module-fuel"
             >
-              <Wallet size={16} />
-              <span>BUDGET</span>
+              <Fuel size={16} />
+              <span>FUEL</span>
             </button>
 
+            {/* GAMES MODULE */}
             <button
               type="button"
-              onClick={() => setActiveScreen('contas')}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
-                activeScreen === 'contas'
-                  ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
+              onClick={() => {
+                setActiveScreen('games');
+                setActiveModule('games');
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                activeModule === 'games'
+                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
               }`}
-              id="btn-sidebar-contas"
+              id="btn-sidebar-module-games"
             >
-              <Landmark size={16} />
-              <span>CONTAS</span>
+              <Gamepad2 size={16} />
+              <span>GAMES</span>
             </button>
 
+            {/* SYSTEM MODULE */}
             <button
               type="button"
-              onClick={() => setActiveScreen('plan')}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
-                activeScreen === 'plan'
-                  ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
+              onClick={() => {
+                setActiveScreen('config');
+                setActiveModule('system');
+              }}
+              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                activeModule === 'system'
+                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
+                  : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
               }`}
-              id="btn-sidebar-plan"
-            >
-              <Calendar size={16} />
-              <span>PLAN</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveScreen('temp')}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
-                activeScreen === 'temp'
-                  ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
-              }`}
-              id="btn-sidebar-temp"
-            >
-              <Clock size={16} />
-              <span>TEMP</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveScreen('config')}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
-                activeScreen === 'config'
-                  ? 'bg-brand-primary/10 text-brand-primary'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5'
-              }`}
-              id="btn-sidebar-config"
+              id="btn-sidebar-module-system"
             >
               <Settings size={16} className={activeScreen === 'config' ? 'rotate-45' : ''} />
               <span>SYSTEM</span>
@@ -1975,50 +2536,211 @@ export default function App() {
         <div className="flex-1 pb-6">
         
         {/* App Title Header with Generated Yellow/Black Icon (Visible on Mobile only) */}
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-outline-variant/10 md:hidden" id="app-brand-header">
-          <img 
-            src="/favicon.jpg" 
-            alt="Nocturne Logo" 
-            className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
-            referrerPolicy="no-referrer"
-          />
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
-              {isOffline && (
-                <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded font-semibold uppercase tracking-wider">Offline</span>
-              )}
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant/10 md:hidden" id="app-brand-header">
+          <div className="flex items-center gap-3">
+            <img 
+              src="/favicon.jpg" 
+              alt="Nocturne Logo" 
+              className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
+              referrerPolicy="no-referrer"
+            />
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
+                {isOffline && (
+                  <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded font-semibold uppercase tracking-wider">Offline</span>
+                )}
+              </div>
+              <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">CONTROLE FINANCEIRO</p>
             </div>
-            <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">CONTROLE FINANCEIRO</p>
           </div>
+
+          {activeScreen === 'fuel' && (
+            <button
+              type="button"
+              onClick={() => setFuelSubView(prev => prev === 'list' ? 'analysis' : 'list')}
+              className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 px-3 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              id="btn-fuel-toggle-analysis-mobile"
+            >
+              {fuelSubView === 'list' ? (
+                <>
+                  <TrendingUp size={12} strokeWidth={2.5} />
+                  <span>ANÁLISE</span>
+                </>
+              ) : (
+                <>
+                  <ArrowLeft size={12} strokeWidth={2.5} />
+                  <span>VOLTAR</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
         <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
-          <div>
+          {/* Left section: Title */}
+          <div className="flex-1 min-w-0">
             <h2 className="text-xl font-black uppercase tracking-wider text-white font-display flex items-center gap-2.5">
               <span>
                 {activeScreen === 'budget' && 'BUDGET'}
                 {activeScreen === 'contas' && 'CONTAS'}
-                {activeScreen === 'plan' && 'PLAN'}
+                {activeScreen === 'plan' && 'PLANEJAMENTO MENSAL'}
                 {activeScreen === 'temp' && 'TEMP'}
                 {activeScreen === 'config' && 'SYSTEM'}
+                {activeScreen === 'fab' && 'WORK'}
+                {activeScreen === 'contracheque' && 'CONTRACHEQUE'}
+                {activeScreen === 'missoes' && 'MISSÕES'}
+                {activeScreen === 'me4' && 'ME4'}
+                {activeScreen === 'fuel' && 'FUEL'}
+                {activeScreen === 'games' && 'GAMES'}
               </span>
               {isOffline && (
                 <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded-lg font-semibold uppercase tracking-wider">Modo Offline</span>
               )}
             </h2>
           </div>
-          
-          <div className="flex items-center gap-4 select-none">
-            <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
-              <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
-              <span className="text-sm font-bold text-brand-primary font-mono">
-                R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </span>
+
+          {/* Center section: Month Navigation and Search centered */}
+          {(activeScreen === 'contracheque' || activeScreen === 'plan') && (
+            <div className="flex-1 flex items-center justify-center gap-3 select-none">
+              {/* Month Navigation on the LEFT of search */}
+              <div className="flex items-center bg-bg-surface-low border border-outline-variant/30 rounded-xl p-1 gap-1">
+                <button
+                  onClick={activeScreen === 'contracheque' ? handleContrachequePrevMonth : handlePlanPrevMonth}
+                  className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
+                  title="Mês anterior"
+                  id={`btn-${activeScreen}-prev-month-header`}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <div className="w-[1px] h-4 bg-outline-variant/20" />
+                <button
+                  onClick={activeScreen === 'contracheque' ? handleContrachequeNextMonth : handlePlanNextMonth}
+                  className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
+                  title="Próximo mês"
+                  id={`btn-${activeScreen}-next-month-header`}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              {/* Search box MM/AAAA */}
+              <div className="relative max-w-[140px] w-full" id={`${activeScreen}-search-header-container`}>
+                <input
+                  type="text"
+                  placeholder="MM/AAAA"
+                  value={activeScreen === 'contracheque' ? contrachequeSearchQuery : planSearchQuery}
+                  onChange={e => activeScreen === 'contracheque' ? handleContrachequeSearchChange(e.target.value) : handlePlanSearchChange(e.target.value)}
+                  className="bg-bg-surface-low border border-outline-variant/50 rounded-xl pl-8 pr-3 py-2 text-xs font-bold text-white placeholder:text-text-muted/60 focus:outline-none focus:border-brand-primary w-full text-center tracking-widest font-mono"
+                  maxLength={7}
+                  id={`input-${activeScreen}-search-header`}
+                />
+                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              </div>
             </div>
+          )}
+          
+          {/* Right section */}
+          <div className="flex-1 flex justify-end items-center gap-4 select-none">
+            {activeScreen === 'fuel' ? (
+              <button
+                type="button"
+                onClick={() => setFuelSubView(prev => prev === 'list' ? 'analysis' : 'list')}
+                className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                id="btn-fuel-toggle-analysis"
+              >
+                {fuelSubView === 'list' ? (
+                  <>
+                    <TrendingUp size={14} strokeWidth={2.5} />
+                    <span>ANÁLISE</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeft size={14} strokeWidth={2.5} />
+                    <span>VOLTAR</span>
+                  </>
+                )}
+              </button>
+            ) : activeScreen === 'config' ? null : activeScreen === 'contracheque' ? (
+              <div className="flex items-center gap-3">
+                {/* Resumo button on the LEFT of the Total Recebido information */}
+                <button
+                  onClick={() => setContrachequeIsResumoView(prev => !prev)}
+                  className={`flex items-center gap-2 py-2 px-4 border rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-sm ${
+                    contrachequeIsResumoView
+                      ? 'bg-brand-primary text-black border-brand-primary hover:bg-brand-primary/80'
+                      : 'bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary border-brand-primary/20'
+                  }`}
+                  id="btn-contracheque-resumo-desktop-top"
+                >
+                  <FileText size={14} />
+                  <span>Resumo</span>
+                </button>
+
+                <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
+                  <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Total Recebido</span>
+                  <span className="text-sm font-bold text-brand-primary font-mono">
+                    R$ {contrachequeTotalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
+                <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
+                <span className="text-sm font-bold text-brand-primary font-mono">
+                  R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
           </div>
         </div>
+        
+        {/* Banner de erro de sincronização do Firebase */}
+        <AnimatePresence>
+          {firestoreWriteError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-start gap-3.5 shadow-lg relative overflow-hidden"
+              id="firestore-write-error-banner"
+            >
+              <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-red-500/10 to-transparent rounded-bl-full pointer-events-none" />
+              <div className="p-2 bg-red-500/15 rounded-xl border border-red-500/25 text-red-400 shrink-0 mt-0.5">
+                <AlertTriangle size={16} strokeWidth={2.5} />
+              </div>
+              <div className="flex-1 space-y-2">
+                <div>
+                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Falha na Sincronização em Nuvem</h4>
+                  <p className="text-[11px] text-red-200/95 leading-relaxed font-medium mt-1">
+                    {firestoreWriteError}
+                  </p>
+                </div>
+                <p className="text-[10px] text-text-muted leading-relaxed">
+                  Não se preocupe: seus dados continuam sendo salvos de forma 100% segura e offline em seu navegador (LocalStorage) para que você possa continuar usando o Nocturne sem perder nada.
+                </p>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleExportBackup}
+                    className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/35 text-red-200 text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <FileText size={12} /> Fazer Backup Manual (JSON)
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFirestoreWriteError(null)}
+                className="text-text-muted hover:text-white transition-colors cursor-pointer p-1 rounded-lg hover:bg-white/5 shrink-0"
+                title="Desconsiderar aviso"
+              >
+                <X size={14} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {activeScreen === 'budget' && (
           <>
@@ -2840,17 +3562,6 @@ export default function App() {
             className="flex flex-col space-y-6 text-left"
             id="config-screen-view"
           >
-            {/* Header / Summary Card */}
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-lg relative overflow-hidden" id="config-summary-header">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
-              <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block mb-1">
-                Central do Sistema
-              </span>
-              <h2 className="text-3xl font-display font-black text-white tracking-tight">
-                Sistema & Dados
-              </h2>
-            </div>
-
             {/* User Account / Session Profile */}
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-user-profile-box">
               <div className="flex items-center gap-2">
@@ -2943,134 +3654,1238 @@ export default function App() {
               </div>
             </div>
 
-            {/* App updates block */}
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-app-updates-box">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
-                  <span className="text-xs font-black text-white uppercase tracking-wider">Atualização do App</span>
-                </div>
-                <span className="text-[10px] font-mono text-text-muted bg-white/5 px-2 py-0.5 rounded border border-outline-variant/20">
-                  v8.1.3
-                </span>
+            {/* Exportar Dados Card */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4 shadow-lg" id="config-export-box">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">Exportar Dados</span>
               </div>
-
-              {swUpdateAvailable ? (
-                <div className="bg-brand-primary/10 border border-brand-primary/45 rounded-xl p-4 text-center space-y-3" id="update-alert-banner">
-                  <div className="flex items-center justify-center gap-2 text-brand-primary">
-                    <Sparkles size={16} className="animate-pulse" />
-                    <span className="text-xs font-extrabold uppercase tracking-wide text-brand-primary">Nova versão disponível — atualizar agora</span>
-                  </div>
-                  <p className="text-[11px] text-zinc-300 leading-normal">
-                    Uma nova versão atualizada do aplicativo foi publicada e está pronta para uso imediato.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleUpdateApp}
-                    className="w-full bg-brand-primary hover:bg-brand-primary/95 text-black font-extrabold uppercase text-[10px] tracking-widest py-3 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 border border-brand-primary/20 shadow-lg shadow-brand-primary/10"
-                    id="btn-update-now"
-                  >
-                    <RefreshCw size={12} className="animate-spin" style={{ animationDuration: '3s' }} />
-                    <span>Atualizar agora</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-bg-base/30 border border-outline-variant/30 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4" id="no-update-banner">
-                  <div className="text-left space-y-0.5">
-                    <p className="text-xs font-bold text-white flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-                      App Atualizado
-                    </p>
-                    <p className="text-[10px] text-text-muted">
-                      Nenhuma atualização pendente detectada no momento.
-                    </p>
-                  </div>
-                  
-                  <button
-                    type="button"
-                    disabled={isCheckingUpdate}
-                    onClick={checkServiceWorkerUpdate}
-                    className="bg-white/5 hover:bg-white/10 active:bg-white/20 text-text-high border border-outline-variant/40 hover:border-outline-variant/60 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
-                    id="btn-check-sw-update"
-                  >
-                    {isCheckingUpdate ? (
-                      <>
-                        <RefreshCw size={10} className="animate-spin" />
-                        <span>Buscando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw size={10} />
-                        <span>Verificar</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+              <p className="text-[11px] text-text-muted">
+                Clique no botão abaixo para fazer o download dos dados atuais.
+              </p>
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="w-full bg-brand-primary hover:bg-brand-primary/80 border border-brand-primary/35 text-black font-extrabold uppercase text-[10px] tracking-widest py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                id="btn-export-backup"
+              >
+                <Settings size={14} strokeWidth={3} className="rotate-45" /> Exportar Backup
+              </button>
             </div>
 
-            {/* Config Control Section */}
-            <div className="bg-bg-surface-low border border-outline-variant/50 rounded-2xl p-5 space-y-6" id="config-controls-box">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
-                  <span className="text-xs font-black text-white uppercase tracking-wider">Exportar Dados</span>
-                </div>
-                <p className="text-[11px] text-text-muted">
-                  Clique no botão abaixo para fazer o download dos dados atuais.
-                </p>
-                <button
-                  type="button"
-                  onClick={handleExportBackup}
-                  className="w-full bg-brand-primary hover:bg-brand-primary/80 border border-brand-primary/35 text-black font-extrabold uppercase text-[10px] tracking-widest py-3.5 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-2"
-                  id="btn-export-backup"
+            {/* Importar Dados Card */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4 shadow-lg" id="config-import-box">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">Importar Dados</span>
+              </div>
+              <p className="text-[11px] text-text-muted">
+                Selecione o arquivo de backup para restaurar os dados.
+              </p>
+              
+              <div className="relative">
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportBackup}
+                  className="hidden"
+                  id="import-backup-file-input"
+                />
+                <label
+                  htmlFor="import-backup-file-input"
+                  className="w-full bg-bg-base hover:bg-bg-base/80 border border-dashed border-outline-variant hover:border-brand-primary/50 text-white font-bold text-[10px] tracking-widest py-5 rounded-2xl transition-all cursor-pointer flex flex-col items-center justify-center gap-2.5"
+                  id="btn-import-backup-label"
                 >
-                  <Settings size={14} strokeWidth={3} className="rotate-45" /> Exportar Backup
-                </button>
+                  <Clock size={18} className="text-brand-primary animate-pulse" />
+                  <span className="uppercase">Selecionar Arquivo de Backup</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Informações do Sistema Card */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4 shadow-lg" id="config-system-info-box">
+              <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">Informações do Sistema</span>
+              </div>
+              
+              <ul className="space-y-2 font-mono text-[11px] leading-relaxed">
+                <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-brand-primary" />
+                    <span>Módulo Finance</span>
+                  </div>
+                  <span className="text-white font-bold">v8.1.3</span>
+                </li>
+                <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-brand-primary" />
+                    <span>Módulo Work</span>
+                  </div>
+                  <span className="text-white font-bold">v2.0.0</span>
+                </li>
+                <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-brand-primary" />
+                    <span>Módulo Fuel</span>
+                  </div>
+                  <span className="text-white font-bold">v2.0.0</span>
+                </li>
+                <li className="flex items-center justify-between text-text-muted py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-brand-primary" />
+                    <span>Módulo Games</span>
+                  </div>
+                  <span className="text-white font-bold">v3.0.0</span>
+                </li>
+              </ul>
+
+              <div className="text-center pt-3 border-t border-outline-variant/10 text-[11px] font-bold text-brand-primary select-none font-mono" id="system-info-developer-text">
+                2026 - v2.0.0 - Desenvolvido por Armindo Neto
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* WORK SCREENS: CONTRACHEQUE */}
+        {activeScreen === 'contracheque' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col h-full overflow-hidden"
+            id="contracheque-screen-view"
+          >
+            <ContrachequeScreen
+              contrachequeEntries={contrachequeEntries}
+              setContrachequeEntries={setContrachequeEntries}
+              triggerToast={triggerToast}
+              currentMonth={contrachequeMonth}
+              setCurrentMonth={setContrachequeMonth}
+              isResumoView={contrachequeIsResumoView}
+              setIsResumoView={setContrachequeIsResumoView}
+              searchQuery={contrachequeSearchQuery}
+              setSearchQuery={handleContrachequeSearchChange}
+            />
+          </motion.div>
+        )}
+
+        {/* WORK SCREENS: MISSÕES */}
+        {activeScreen === 'missoes' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+            id="missoes-screen-view"
+          >
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
+              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
+                <Plane size={32} className="text-brand-primary animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MISSÕES</h3>
+                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
+                <p className="text-xs text-text-muted">Acompanhe suas missões, deslocamentos e diárias diretamente por aqui em breve.</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* WORK SCREENS: ME4 */}
+        {activeScreen === 'me4' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+            id="me4-screen-view"
+          >
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
+              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
+                <ListOrdered size={32} className="text-brand-primary animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">ME4</h3>
+                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
+                <p className="text-xs text-text-muted">Acesse seu histórico, registros e boletins ME4 de forma simplificada em breve.</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* GENERAL WORK SCREEN (FALLBACK) */}
+        {activeScreen === 'fab' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+            id="fab-screen-view"
+          >
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
+              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
+                <FABIcon size={32} className="text-brand-primary animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MÓDULO WORK</h3>
+                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
+                <p className="text-xs text-text-muted">Em breve você terá acesso a todas as funcionalidades deste espaço.</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* FUEL SCREEN */}
+        {activeScreen === 'fuel' && (() => {
+          const sortedAsc = [...fuelEntries].sort((a, b) => a.km - b.km);
+          
+          const totalAbastecido = fuelEntries.reduce((sum, e) => sum + e.qty, 0);
+          const totalGasto = fuelEntries.reduce((sum, e) => sum + e.value, 0);
+          
+          const totalPercorrido = sortedAsc.length >= 2 
+            ? sortedAsc[sortedAsc.length - 1].km - sortedAsc[0].km 
+            : 0;
+
+          const intervals: { dist: number; qty: number; consumption: number }[] = [];
+          for (let i = 1; i < sortedAsc.length; i++) {
+            const dist = sortedAsc[i].km - sortedAsc[i - 1].km;
+            const qty = sortedAsc[i].qty;
+            const consumption = qty > 0 ? dist / qty : 0;
+            intervals.push({ dist, qty, consumption });
+          }
+
+          const last3Intervals = intervals.slice(-3);
+          const totalDistLast3 = last3Intervals.reduce((sum, item) => sum + item.dist, 0);
+          const totalQtyLast3 = last3Intervals.reduce((sum, item) => sum + item.qty, 0);
+          const mediaConsumoUltimos3 = totalQtyLast3 > 0 ? totalDistLast3 / totalQtyLast3 : 0;
+
+          const totalDistTotal = intervals.reduce((sum, item) => sum + item.dist, 0);
+          const totalQtyTotal = intervals.reduce((sum, item) => sum + item.qty, 0);
+          const mediaConsumoReal = totalQtyTotal > 0 ? totalDistTotal / totalQtyTotal : 0;
+
+          const parseFuelDate = (dateStr: string): Date => {
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+              const day = parseInt(parts[0], 10);
+              const month = parseInt(parts[1], 10) - 1;
+              let year = parseInt(parts[2], 10);
+              if (parts[2].length === 2) {
+                year += 2000;
+              }
+              return new Date(year, month, day);
+            }
+            return new Date();
+          };
+
+          // Simple linear regression to calculate trendline on chronological time basis
+          const dataForChart = sortedAsc.map((entry, index) => {
+            const parsedDate = parseFuelDate(entry.date);
+            return {
+              name: entry.date,
+              timestamp: parsedDate.getTime(),
+              km: entry.km,
+              index: index
+            };
+          });
+
+          let trendData = [...dataForChart];
+          const n = dataForChart.length;
+          if (n >= 2) {
+            const firstT = dataForChart[0].timestamp;
+            let sumX = 0;
+            let sumY = 0;
+            let sumXY = 0;
+            let sumXX = 0;
+            for (let i = 0; i < n; i++) {
+              const x = dataForChart[i].timestamp - firstT;
+              const y = dataForChart[i].km;
+              sumX += x;
+              sumY += y;
+              sumXY += x * y;
+              sumXX += x * x;
+            }
+            const denominator = n * sumXX - sumX * sumX;
+            const slope = denominator !== 0 ? (n * sumXY - sumX * sumY) / denominator : 0;
+            const intercept = (sumY - slope * sumX) / n;
+
+            trendData = dataForChart.map(d => {
+              const x = d.timestamp - firstT;
+              return {
+                ...d,
+                kmReal: d.km,
+                kmTendência: parseFloat((slope * x + intercept).toFixed(1))
+              };
+            });
+          } else {
+            trendData = dataForChart.map(d => ({
+              ...d,
+              kmReal: d.km,
+              kmTendência: d.km
+            }));
+          }
+
+          const entriesWithMetrics = sortedAsc.map((entry, index) => {
+            const precoLitro = entry.qty > 0 ? entry.value / entry.qty : 0;
+            let distancia = 0;
+            let consumo = 0;
+            if (index > 0) {
+              distancia = entry.km - sortedAsc[index - 1].km;
+              consumo = entry.qty > 0 ? distancia / entry.qty : 0;
+            }
+            return {
+              ...entry,
+              precoLitro,
+              distancia,
+              consumo,
+              isFirst: index === 0
+            };
+          });
+
+          const displayEntries = [...entriesWithMetrics].reverse();
+
+          const handleAddFuelEntry = (e: React.FormEvent) => {
+            e.preventDefault();
+            setFuelError(null);
+
+            if (fuelDate.length !== 8) {
+              setFuelError('Por favor, informe a data completa no formato DD/MM/AA.');
+              return;
+            }
+            if (!fuelKm) {
+              setFuelError('Por favor, informe a quilometragem (Km).');
+              return;
+            }
+            if (!fuelQty) {
+              setFuelError('Por favor, informe a quantidade de litros (l).');
+              return;
+            }
+            if (!fuelValue) {
+              setFuelError('Por favor, informe o valor pago (R$).');
+              return;
+            }
+
+            const parsedKm = parseFloat(fuelKm.replace(/\./g, '').replace(',', '.'));
+            const parsedQty = parseFloat(fuelQty.replace(/\./g, '').replace(',', '.'));
+            const parsedValue = parseFloat(fuelValue.replace(/\./g, '').replace(',', '.'));
+
+            if (isNaN(parsedKm) || parsedKm <= 0) {
+              setFuelError('Km deve ser maior que zero.');
+              return;
+            }
+            if (isNaN(parsedQty) || parsedQty <= 0) {
+              setFuelError('Quantidade deve ser maior que zero.');
+              return;
+            }
+            if (isNaN(parsedValue) || parsedValue <= 0) {
+              setFuelError('Valor pago deve ser maior que zero.');
+              return;
+            }
+
+            // Check if Km is valid compared to existing if there are entries (optional warning/validation)
+            // But let's keep it flexible so the user can back-insert if needed.
+
+            const newEntry: FuelEntry = {
+              id: `fuel-${Date.now()}`,
+              date: fuelDate,
+              km: parsedKm,
+              qty: parsedQty,
+              value: parsedValue
+            };
+
+            setFuelEntries(prev => [...prev, newEntry]);
+            triggerToast('Abastecimento registrado com sucesso!');
+            setIsFuelFormOpen(false);
+
+            // Reset fields
+            setFuelKm('');
+            setFuelQty('');
+            setFuelValue('');
+            setFuelError(null);
+
+            // Set date to today
+            const today = new Date();
+            const dd = String(today.getDate()).padStart(2, '0');
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const yy = String(today.getFullYear()).slice(-2);
+            setFuelDate(`${dd}/${mm}/${yy}`);
+          };
+
+          const handleDeleteFuelEntry = (id: string) => {
+            setFuelEntryToDelete(id);
+          };
+
+          const confirmDeleteFuelEntry = () => {
+            if (fuelEntryToDelete) {
+              setFuelEntries(prev => prev.filter(e => e.id !== fuelEntryToDelete));
+              triggerToast('Abastecimento excluído.');
+              setFuelEntryToDelete(null);
+            }
+          };
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="w-full max-w-7xl mx-auto px-4 md:px-6 py-6 space-y-6 text-left"
+              id="fuel-screen-view"
+            >
+              {/* Resumo no Topo */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" id="fuel-summary-cards">
+                <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-4 flex flex-col justify-between space-y-2 shadow-lg">
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Total Abastecido</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl md:text-2xl font-mono font-black text-white">
+                      {totalAbastecido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    <span className="text-xs text-brand-primary font-bold">litros</span>
+                  </div>
+                </div>
+
+                <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-4 flex flex-col justify-between space-y-2 shadow-lg">
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Total Gasto</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-brand-primary font-bold">R$</span>
+                    <span className="text-xl md:text-2xl font-mono font-black text-white">
+                      {totalGasto.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-4 flex flex-col justify-between space-y-2 shadow-lg">
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Total Percorrido</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl md:text-2xl font-mono font-black text-white">
+                      {totalPercorrido.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                    </span>
+                    <span className="text-xs text-brand-primary font-bold">Km</span>
+                  </div>
+                </div>
+
+                <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-4 flex flex-col justify-between space-y-2 shadow-lg">
+                  <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Média de Consumo (Últ. 3)</span>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-xl md:text-2xl font-mono font-black text-white">
+                      {mediaConsumoUltimos3 > 0 
+                        ? mediaConsumoUltimos3.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) 
+                        : '-'}
+                    </span>
+                    <span className="text-xs text-brand-primary font-bold">{mediaConsumoUltimos3 > 0 ? 'Km/l' : ''}</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="h-[1px] bg-outline-variant/20" />
+              {/* Histórico ou Painel de Análise */}
+              {fuelSubView === 'analysis' ? (
+                <div className="space-y-6" id="fuel-analysis-panel">
+                  {/* Gráfico de Evolução de Quilometragem (Ocupa toda a linha) */}
+                  <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-xl space-y-4">
+                      <div className="border-b border-outline-variant/30 pb-3 flex items-center justify-start">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp size={18} className="text-brand-primary" />
+                          <h3 className="font-display font-black text-sm tracking-tight text-white uppercase">Evolução da Quilometragem</h3>
+                        </div>
+                      </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
-                  <span className="text-xs font-black text-white uppercase tracking-wider">Importar Dados</span>
+                      {sortedAsc.length < 2 ? (
+                        <div className="py-16 text-center text-text-muted text-xs space-y-2">
+                          <p className="font-bold">Dados insuficientes para gerar o gráfico histórico.</p>
+                          <p className="max-w-xs mx-auto text-[10px]">Registre pelo menos 2 abastecimentos para visualizar a evolução da quilometragem e a linha de tendência.</p>
+                        </div>
+                      ) : (
+                        <div className="h-[300px] w-full pt-4" id="fuel-analysis-chart-container">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={trendData} margin={{ top: 10, right: 10, left: 0, bottom: 5 }}>
+                              <XAxis 
+                                dataKey="timestamp" 
+                                type="number"
+                                domain={['dataMin', 'dataMax']}
+                                tickFormatter={(tick) => {
+                                  try {
+                                    const d = new Date(tick);
+                                    if (isNaN(d.getTime())) return '';
+                                    const dd = String(d.getDate()).padStart(2, '0');
+                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = d.getFullYear();
+                                    return `${dd}/${mm}/${yyyy}`;
+                                  } catch (_) {
+                                    return '';
+                                  }
+                                }}
+                                stroke="#888888" 
+                                fontSize={10} 
+                                tickLine={false} 
+                                axisLine={false}
+                              />
+                              <YAxis 
+                                stroke="#888888" 
+                                fontSize={10} 
+                                tickLine={false} 
+                                axisLine={false}
+                                domain={['auto', 'auto']}
+                                tickFormatter={(val) => `${val} Km`}
+                              />
+                              <Tooltip 
+                                contentStyle={{ backgroundColor: '#121212', borderColor: '#2d2d2d', borderRadius: '12px' }}
+                                labelClassName="text-[10px] font-mono text-text-muted"
+                                itemStyle={{ fontSize: '11px', padding: '2px 0' }}
+                                labelFormatter={(label) => {
+                                  try {
+                                    const d = new Date(label);
+                                    if (isNaN(d.getTime())) return label;
+                                    const dd = String(d.getDate()).padStart(2, '0');
+                                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = d.getFullYear();
+                                    return `${dd}/${mm}/${yyyy}`;
+                                  } catch (_) {
+                                    return label;
+                                  }
+                                }}
+                                formatter={(value: any, name: any) => [
+                                  `${Number(value).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} Km`,
+                                  name === 'kmReal' ? 'Km Real' : 'Tendência'
+                                ]}
+                              />
+                              <Line 
+                                type="monotone" 
+                                dataKey="kmReal" 
+                                name="kmReal"
+                                stroke="var(--color-brand-primary)" 
+                                strokeWidth={2.5}
+                                dot={false}
+                                activeDot={{ r: 6 }}
+                              />
+                              <Line 
+                                type="monotone" 
+                                dataKey="kmTendência" 
+                                name="kmTendência"
+                                stroke="#50e3c2" 
+                                strokeWidth={1.5}
+                                strokeDasharray="5 5"
+                                dot={false}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Container de Simulador e Última Manutenção (Lado a lado) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Simulador de Média de Consumo */}
+                      <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-xl space-y-4">
+                      <div className="border-b border-outline-variant/30 pb-3 flex items-center gap-2">
+                        <SlidersHorizontal size={18} className="text-brand-primary" />
+                        <h3 className="font-display font-black text-sm tracking-tight text-white uppercase">Simulador de Consumo</h3>
+                      </div>
+
+                      <div className="space-y-4">
+                        {/* Média Real Display */}
+                        <div className="bg-bg-base/50 border border-outline-variant/30 rounded-xl p-3.5 flex items-center justify-between">
+                          <div>
+                            <span className="text-[9px] uppercase tracking-wider text-text-muted font-bold block">Consumo</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-lg font-mono font-black text-brand-primary">
+                              {mediaConsumoReal > 0 
+                                ? `${mediaConsumoReal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` 
+                                : '-'}
+                            </span>
+                            <span className="text-[10px] text-text-muted ml-1 font-bold">Km/l</span>
+                          </div>
+                        </div>
+
+                        {/* Campo de Simulação */}
+                        <div className="space-y-1.5">
+                          <label className="block text-[10px] uppercase tracking-wider text-text-muted font-bold">CONSUMO COMPARATIVO</label>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={simulatedConsumption}
+                              onChange={(e) => {
+                                const digits = e.target.value.replace(/\D/g, '');
+                                if (!digits) {
+                                  setSimulatedConsumption('');
+                                } else {
+                                  const num = parseInt(digits, 10);
+                                  const floatVal = num / 10;
+                                  setSimulatedConsumption(floatVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+                                }
+                              }}
+                              className="w-full bg-bg-base border border-outline-variant rounded-xl px-3.5 py-2.5 text-xs text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all text-right pr-14"
+                              placeholder="0,0"
+                              id="fuel-input-simulated-consumption"
+                            />
+                            <span className="absolute inset-y-0 right-3.5 flex items-center text-[10px] font-bold text-text-muted">Km/l</span>
+                          </div>
+                        </div>
+
+                        {/* Resultados */}
+                        {(() => {
+                          const parsedSim = parseFloat(simulatedConsumption.replace(',', '.'));
+                          if (!parsedSim || parsedSim <= 0 || mediaConsumoReal <= 0 || totalPercorrido <= 0) {
+                            return (
+                              <div className="bg-bg-base/30 border border-dashed border-outline-variant/50 rounded-xl p-4 text-center text-text-muted text-[11px]">
+                                Digite um consumo simulado válido para calcular a economia ou gasto adicional.
+                              </div>
+                            );
+                          }
+
+                          const simQty = totalPercorrido / parsedSim;
+                          const diffQty = totalQtyTotal - simQty;
+                          const avgPrice = totalAbastecido > 0 ? totalGasto / totalAbastecido : 0;
+                          const diffCash = diffQty * avgPrice;
+
+                          const isSaving = diffQty >= 0;
+
+                          return (
+                            <div className="space-y-3 pt-2" id="fuel-simulation-results">
+                              <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold">Resultado da Comparação</div>
+                              
+                              {/* Litragem comparison */}
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="bg-bg-base/40 border border-outline-variant/30 rounded-xl p-2.5">
+                                  <span className="text-[9px] uppercase tracking-wider text-text-muted block">Litragem Real</span>
+                                  <span className="text-sm font-mono font-bold text-white">
+                                    {totalQtyTotal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} l
+                                  </span>
+                                </div>
+                                <div className="bg-bg-base/40 border border-outline-variant/30 rounded-xl p-2.5">
+                                  <span className="text-[9px] uppercase tracking-wider text-text-muted block">Litragem Simulada</span>
+                                  <span className="text-sm font-mono font-bold text-white">
+                                    {simQty.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} l
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Resultado Financeiro e de combustível */}
+                              <div className={`border rounded-xl p-4 flex flex-col items-center text-center space-y-1 ${
+                                isSaving 
+                                  ? 'bg-emerald-950/20 border-emerald-500/30 text-emerald-400' 
+                                  : 'bg-red-950/20 border-red-500/30 text-red-400'
+                              }`}>
+                                <span className="text-[10px] uppercase tracking-wider font-bold block">
+                                  {isSaving ? 'Estimativa de Economia' : 'Estimativa de Custo Extra'}
+                                </span>
+                                
+                                <div className="text-2xl font-mono font-black mt-1">
+                                  R$ {Math.abs(diffCash).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </div>
+                                
+                                <span className="text-[11px] font-semibold opacity-90">
+                                  {isSaving 
+                                    ? `Você teria economizado ${Math.abs(diffQty).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} litros` 
+                                    : `Você teria gasto ${Math.abs(diffQty).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} litros a mais`
+                                  }
+                                </span>
+                                <span className="text-[9px] opacity-65 font-medium block mt-1">
+                                  Cálculo baseado no preço médio de R$ {avgPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/l
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+
+                      {/* Registro de Última Manutenção */}
+                      <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-xl space-y-4" id="maint-section">
+                        <div className="border-b border-outline-variant/30 pb-3 flex items-center gap-2">
+                          <Wrench size={18} className="text-brand-primary" />
+                          <h3 className="font-display font-black text-sm tracking-tight text-white uppercase">Última Manutenção</h3>
+                        </div>
+
+                        {/* Informação Atual */}
+                        <div className="bg-bg-base/50 border border-outline-variant/30 rounded-xl p-3.5 space-y-2">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-text-muted font-semibold uppercase tracking-wider text-[9px]">Data da Manutenção</span>
+                            <span className="font-mono font-black text-white">{lastMaintenance.date || 'Não cadastrada'}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-text-muted font-semibold uppercase tracking-wider text-[9px]">Quilometragem</span>
+                            <span className="font-mono font-black text-brand-primary">
+                              {lastMaintenance.km ? `${Number(lastMaintenance.km).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km` : '-'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Formulário Simples para Sobrescrever */}
+                        <div className="space-y-3 pt-1">
+                          <div className="text-[10px] uppercase tracking-wider text-text-muted font-bold">Registrar Nova Manutenção</div>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* Data */}
+                            <div className="space-y-1">
+                              <label className="block text-[9px] uppercase tracking-wider text-text-muted font-bold">Data (DD/MM/AA)</label>
+                              <div className="relative">
+                                <span className="absolute inset-y-0 left-3 flex items-center text-text-muted">
+                                  <Calendar size={12} />
+                                </span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={maintDateInput}
+                                  onChange={(e) => {
+                                    let clean = e.target.value.replace(/\D/g, '');
+                                    if (clean.length > 6) {
+                                      clean = clean.slice(0, 6);
+                                    }
+                                    let formatted = "";
+                                    if (clean.length > 0) {
+                                      formatted += clean.slice(0, 2);
+                                    }
+                                    if (clean.length > 2) {
+                                      formatted += "/" + clean.slice(2, 4);
+                                    }
+                                    if (clean.length > 4) {
+                                      formatted += "/" + clean.slice(4, 6);
+                                    }
+                                    setMaintDateInput(formatted);
+                                  }}
+                                  className="w-full bg-bg-base border border-outline-variant rounded-xl pl-8 pr-2 py-2 text-[11px] text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all"
+                                  placeholder="Ex: 15/06/26"
+                                  maxLength={8}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Km */}
+                            <div className="space-y-1">
+                              <label className="block text-[9px] uppercase tracking-wider text-text-muted font-bold">Km</label>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={maintKmInput}
+                                onChange={(e) => {
+                                  const digits = e.target.value.replace(/\D/g, '');
+                                  if (!digits) {
+                                    setMaintKmInput('');
+                                  } else {
+                                    const num = parseInt(digits, 10);
+                                    const floatVal = num / 10;
+                                    setMaintKmInput(floatVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+                                  }
+                                }}
+                                className="w-full bg-bg-base border border-outline-variant rounded-xl px-3 py-2 text-[11px] text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all text-right"
+                                placeholder="0,0"
+                              />
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (maintDateInput.length !== 8) {
+                                triggerToast('Por favor, informe a data completa no formato DD/MM/AA.');
+                                return;
+                              }
+                              if (!maintKmInput) {
+                                triggerToast('Por favor, informe a quilometragem da manutenção.');
+                                return;
+                              }
+                              const rawKm = maintKmInput.replace(/\./g, '').replace(',', '.');
+                              setLastMaintenance({
+                                date: maintDateInput,
+                                km: rawKm
+                              });
+                              triggerToast('Manutenção registrada com sucesso!');
+                            }}
+                            className="w-full bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 rounded-xl transition-all shadow-md text-center cursor-pointer flex items-center justify-center gap-1.5"
+                          >
+                            <Wrench size={12} />
+                            <span>Atualizar Manutenção</span>
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+              ) : (
+                <div className="w-full bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 shadow-xl space-y-4">
+                    <div className="border-b border-outline-variant/30 pb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <History size={18} className="text-brand-primary" />
+                        <h3 className="font-display font-black text-sm tracking-tight text-white uppercase">Histórico de Abastecimentos</h3>
+                      </div>
+                      <span className="text-[10px] bg-bg-base border border-outline-variant/50 px-2.5 py-1 rounded-full font-mono text-text-muted">
+                        {fuelEntries.length} {fuelEntries.length === 1 ? 'registro' : 'registros'}
+                      </span>
+                    </div>
+
+                    {displayEntries.length === 0 ? (
+                      <div className="py-12 text-center text-text-muted space-y-2" id="fuel-history-empty">
+                        <p className="text-sm font-semibold">Nenhum abastecimento registrado ainda.</p>
+                        <p className="text-[11px] max-w-sm mx-auto">Clique no botão flutuante <strong className="text-brand-primary font-bold">"+"</strong> no canto inferior direito para cadastrar o seu primeiro abastecimento da moto e iniciar as análises de consumo.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Desktop Table */}
+                        <div className="hidden md:block overflow-x-auto" id="fuel-desktop-table">
+                          <table className="w-full text-center border-collapse">
+                            <thead>
+                              <tr className="border-b border-outline-variant/30 text-[9px] uppercase tracking-wider text-text-muted font-bold">
+                                <th className="py-3 px-2 text-center">Data</th>
+                                <th className="py-3 px-2 text-center">Odômetro</th>
+                                <th className="py-3 px-2 text-center">Valor</th>
+                                <th className="py-3 px-2 text-center">Quantidade</th>
+                                <th className="py-3 px-2 text-center">Preço Litro</th>
+                                <th className="py-3 px-2 text-center">Distância</th>
+                                <th className="py-3 px-2 text-center">Consumo</th>
+                                <th className="py-3 px-3 text-center w-10"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {displayEntries.map((e) => (
+                                <tr key={e.id} className="border-b border-outline-variant/20 hover:bg-white/[0.02] transition-colors text-xs text-text-high">
+                                  <td className="py-3.5 px-2 text-center font-mono text-text-muted">{e.date}</td>
+                                  <td className="py-3.5 px-2 text-center font-mono font-medium">
+                                    {e.km.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km
+                                  </td>
+                                  <td className="py-3.5 px-2 text-center font-mono font-semibold text-white">
+                                    R$ {e.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </td>
+                                  <td className="py-3.5 px-2 text-center font-mono text-text-muted">
+                                    {e.qty.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} l
+                                  </td>
+                                  <td className="py-3.5 px-2 text-center font-mono text-text-muted">
+                                    R$ {e.precoLitro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/l
+                                  </td>
+                                  <td className="py-3.5 px-2 text-center font-mono">
+                                    {e.isFirst ? (
+                                      <span className="text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/5 text-text-muted font-sans font-bold">Primeiro</span>
+                                    ) : (
+                                      <span className="text-emerald-400 font-bold">+{e.distancia.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3.5 px-2 text-center font-mono">
+                                    {e.isFirst ? (
+                                      <span className="text-text-muted">-</span>
+                                    ) : (
+                                      <span className="text-brand-primary font-bold">{e.consumo.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km/l</span>
+                                    )}
+                                  </td>
+                                  <td className="py-3.5 px-3 text-center">
+                                    <button
+                                      onClick={() => handleDeleteFuelEntry(e.id)}
+                                      className="text-text-muted hover:text-red-400 p-1.5 hover:bg-red-500/10 rounded-lg transition-colors"
+                                      title="Excluir"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Mobile Cards View */}
+                        <div className="md:hidden space-y-3" id="fuel-mobile-cards">
+                          {displayEntries.map((e) => (
+                            <div key={e.id} className="bg-bg-base border border-outline-variant/50 rounded-xl p-4 space-y-3 shadow-sm text-xs">
+                              <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
+                                <span className="font-mono text-text-muted font-bold">{e.date}</span>
+                                <button
+                                  onClick={() => handleDeleteFuelEntry(e.id)}
+                                  className="text-text-muted hover:text-red-400 p-1 rounded-md hover:bg-red-500/10 transition-all"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-y-2.5">
+                                <div>
+                                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-bold block">Odomêtro (Km)</span>
+                                  <span className="font-mono font-bold text-white">{e.km.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-bold block">Abastecido</span>
+                                  <span className="font-mono font-bold text-brand-primary">R$ {e.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  <span className="text-[10px] text-text-muted block">({e.qty.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} l)</span>
+                                </div>
+                                <div>
+                                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-bold block">Preço do Litro</span>
+                                  <span className="font-mono text-text-muted">R$ {e.precoLitro.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/l</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[9px] uppercase tracking-wider text-text-muted font-bold block">Percurso / Consumo</span>
+                                  {e.isFirst ? (
+                                    <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/5 text-text-muted font-bold">Primeiro</span>
+                                  ) : (
+                                    <div className="font-mono space-y-0.5">
+                                      <div className="text-emerald-400 font-bold">+{e.distancia.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km</div>
+                                      <div className="text-brand-primary font-bold">{e.consumo.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km/l</div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                 </div>
-                <p className="text-[11px] text-text-muted">
-                  Selecione o arquivo de backup para restaurar os dados.
-                </p>
-                
-                <div className="relative">
-                  <input
-                    type="file"
-                    accept=".json"
-                    onChange={handleImportBackup}
-                    className="hidden"
-                    id="import-backup-file-input"
-                  />
-                  <label
-                    htmlFor="import-backup-file-input"
-                    className="w-full bg-bg-base hover:bg-bg-base/80 border border-dashed border-outline-variant hover:border-brand-primary/50 text-white font-bold text-[10px] tracking-widest py-5 rounded-2xl transition-all cursor-pointer flex flex-col items-center justify-center gap-2.5"
-                    id="btn-import-backup-label"
-                  >
-                    <Clock size={18} className="text-brand-primary animate-pulse" />
-                    <span className="uppercase">Selecionar Arquivo de Backup</span>
-                  </label>
-                </div>
+              )}
+
+                {/* Modal de Novo Abastecimento */}
+                <AnimatePresence>
+                  {isFuelFormOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm shadow-2xl" id="fuel-form-modal-overlay">
+                      <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        className="w-full max-w-sm bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-6 space-y-5 shadow-xl text-left relative"
+                        id="fuel-form-modal-content"
+                      >
+                        {/* Close button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsFuelFormOpen(false);
+                            setFuelError(null);
+                          }}
+                          className="absolute top-4 right-4 text-text-muted hover:text-white transition-colors cursor-pointer p-1"
+                          id="btn-close-fuel-modal"
+                        >
+                          ✕
+                        </button>
+
+                        {/* Header */}
+                        <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3">
+                          <Fuel className="text-brand-primary" size={18} />
+                          <h3 className="font-display font-black text-sm tracking-tight text-white uppercase">
+                            Novo Abastecimento
+                          </h3>
+                        </div>
+
+                        {/* Form */}
+                        <form onSubmit={(e) => {
+                          handleAddFuelEntry(e);
+                        }} className="space-y-4" id="fuel-modal-form">
+                          {fuelError && (
+                            <div className="text-xs text-red-400 bg-red-950/20 border border-red-500/30 rounded-xl p-3" id="fuel-form-modal-error">
+                              {fuelError}
+                            </div>
+                          )}
+
+                          {/* Data */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase tracking-wider text-text-muted font-bold">Data (DD/MM/AA)</label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-3.5 flex items-center text-text-muted">
+                                <Calendar size={14} />
+                              </span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={fuelDate}
+                                onChange={(e) => {
+                                  let clean = e.target.value.replace(/\D/g, '');
+                                  if (clean.length > 6) {
+                                    clean = clean.slice(0, 6);
+                                  }
+                                  let formatted = "";
+                                  if (clean.length > 0) {
+                                    formatted += clean.slice(0, 2);
+                                  }
+                                  if (clean.length > 2) {
+                                    formatted += "/" + clean.slice(2, 4);
+                                  }
+                                  if (clean.length > 4) {
+                                    formatted += "/" + clean.slice(4, 6);
+                                  }
+                                  setFuelDate(formatted);
+                                }}
+                                className="w-full bg-bg-base border border-outline-variant rounded-xl pl-10 pr-4 py-2.5 text-xs text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all"
+                                placeholder="Ex: 21/06/26"
+                                maxLength={8}
+                                id="fuel-modal-input-date"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Km */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase tracking-wider text-text-muted font-bold">Quilometragem (Km)</label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={fuelKm}
+                                onChange={(e) => {
+                                  const digits = e.target.value.replace(/\D/g, '');
+                                  if (!digits) {
+                                    setFuelKm('');
+                                  } else {
+                                    const num = parseInt(digits, 10);
+                                    const floatVal = num / 10;
+                                    setFuelKm(floatVal.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+                                  }
+                                }}
+                                className="w-full bg-bg-base border border-outline-variant rounded-xl px-3.5 py-2.5 text-xs text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all text-right pr-12"
+                                placeholder="0,0"
+                                id="fuel-modal-input-km"
+                              />
+                              <span className="absolute inset-y-0 right-3.5 flex items-center text-[10px] font-bold text-text-muted uppercase tracking-wider">Km</span>
+                            </div>
+                          </div>
+
+                          {/* Quantidade */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase tracking-wider text-text-muted font-bold">Quantidade (Litros)</label>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={fuelQty}
+                                onChange={(e) => {
+                                  const digits = e.target.value.replace(/\D/g, '');
+                                  if (!digits) {
+                                    setFuelQty('');
+                                  } else {
+                                    const num = parseInt(digits, 10);
+                                    const floatVal = num / 100;
+                                    setFuelQty(floatVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                                  }
+                                }}
+                                className="w-full bg-bg-base border border-outline-variant rounded-xl px-3.5 py-2.5 text-xs text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all text-right pr-10"
+                                placeholder="0,00"
+                                id="fuel-modal-input-qty"
+                              />
+                              <span className="absolute inset-y-0 right-3.5 flex items-center text-[10px] font-bold text-text-muted uppercase tracking-wider">L</span>
+                            </div>
+                          </div>
+
+                          {/* Valor */}
+                          <div className="space-y-1.5">
+                            <label className="block text-[10px] uppercase tracking-wider text-text-muted font-bold">Valor Pago (R$)</label>
+                            <div className="relative">
+                              <span className="absolute inset-y-0 left-3.5 flex items-center text-[10px] font-bold text-brand-primary">R$</span>
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                value={fuelValue}
+                                onChange={(e) => {
+                                  const digits = e.target.value.replace(/\D/g, '');
+                                  if (!digits) {
+                                    setFuelValue('');
+                                  } else {
+                                    const num = parseInt(digits, 10);
+                                    const floatVal = num / 100;
+                                    setFuelValue(floatVal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                                  }
+                                }}
+                                className="w-full bg-bg-base border border-outline-variant rounded-xl pl-9 pr-4 py-2.5 text-xs text-text-high font-mono tracking-tight focus:outline-none focus:border-brand-primary transition-all text-right font-bold text-brand-primary"
+                                placeholder="0,00"
+                                id="fuel-modal-input-value"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsFuelFormOpen(false);
+                                setFuelError(null);
+                              }}
+                              className="bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-text-high font-extrabold uppercase text-[10px] tracking-wider py-3 rounded-xl transition-all cursor-pointer text-center"
+                              id="btn-cancel-fuel-modal"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="submit"
+                              className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-1"
+                              id="btn-submit-fuel-modal"
+                            >
+                              <Plus size={12} strokeWidth={3} />
+                              <span>Salvar</span>
+                            </button>
+                          </div>
+                        </form>
+                      </motion.div>
+                    </div>
+                  )}
+
+                  {fuelEntryToDelete && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm shadow-2xl" id="fuel-delete-modal-overlay">
+                      <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        className="w-full max-w-xs bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-6 space-y-5 shadow-xl text-left relative"
+                        id="fuel-delete-modal-content"
+                      >
+                        <h3 className="font-display font-black text-sm tracking-tight text-white uppercase border-b border-outline-variant/30 pb-3">
+                          Confirmar Exclusão
+                        </h3>
+                        <p className="text-xs text-text-muted leading-relaxed">
+                          Deseja realmente excluir este abastecimento? Essa ação é permanente.
+                        </p>
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setFuelEntryToDelete(null)}
+                            className="bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-text-high font-extrabold uppercase text-[10px] tracking-wider py-3 rounded-xl transition-all cursor-pointer text-center"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={confirmDeleteFuelEntry}
+                            className="bg-red-500 hover:bg-red-600 text-white font-black text-[10px] uppercase tracking-wider py-3 rounded-xl transition-all shadow-md text-center"
+                          >
+                            Excluir
+                          </button>
+                        </div>
+                      </motion.div>
+                    </div>
+                  )}
+                </AnimatePresence>
+            </motion.div>
+          );
+        })()}
+
+        {/* GAMES SCREEN */}
+        {activeScreen === 'games' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+            id="games-screen-view"
+          >
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
+              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
+                <Gamepad2 size={32} className="text-brand-primary animate-pulse" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MÓDULO GAMES</h3>
+                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
+                <p className="text-xs text-text-muted">Em breve você terá acesso a todas as funcionalidades deste espaço.</p>
               </div>
             </div>
           </motion.div>
         )}
 
         </div>
-
-        {/* Discrete footer for applet authoring */}
-        {activeScreen === 'config' && (
-          <div className="text-center pb-4 pt-4 text-[10px] text-text-muted select-none opacity-60 tracking-wider shrink-0" id="app-developer-footer">
-            2026 - v8.1.3 - Desenvolvido por Armindo Neto
-          </div>
-        )}
       </main>
+
+      {/* Mobile Submenu for FINANCE module (only shown when activeModule === 'finance' and showMobileSubmenu is true on mobile) */}
+      <AnimatePresence>
+        {activeModule === 'finance' && showMobileSubmenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 15 }}
+            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            id="mobile-finance-subnav"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('budget');
+                setActiveTab('transacoes');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'budget' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-budget"
+            >
+              <Wallet size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">BUDGET</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('contas');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'contas' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-contas"
+            >
+              <Landmark size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">CONTAS</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('plan');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'plan' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-plan"
+            >
+              <Calendar size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">PLAN</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('temp');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'temp' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-temp"
+            >
+              <Clock size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">TEMP</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Submenu for WORK module (only shown when activeModule === 'fab' and showMobileSubmenu is true on mobile) */}
+      <AnimatePresence>
+        {activeModule === 'fab' && showMobileSubmenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 15 }}
+            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            id="mobile-work-subnav"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('contracheque');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'contracheque' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-contracheque"
+            >
+              <Receipt size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">CONTRACHEQUE</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('missoes');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'missoes' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-missoes"
+            >
+              <Plane size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">MISSÕES</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('me4');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'me4' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-me4"
+            >
+              <ListOrdered size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">ME4</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Fixed bottom menu bar with active dynamic states */}
       <div 
@@ -3079,52 +4894,78 @@ export default function App() {
       >
         <button
           type="button"
-          onClick={() => setActiveScreen('budget')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'budget' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
-          id="btn-nav-budget"
+          onClick={() => {
+            if (activeModule === 'finance') {
+              setShowMobileSubmenu(prev => !prev);
+            } else {
+              setActiveModule('finance');
+              setShowMobileSubmenu(true);
+            }
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'finance' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
+          id="btn-nav-finance"
         >
-          <Wallet size={18} className={activeScreen === 'budget' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[10px] font-black tracking-widest uppercase font-display">BUDGET</span>
+          <DollarSign size={18} className={activeModule === 'finance' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
+          <span className="text-[9px] font-black tracking-widest uppercase font-display">FINANCE</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveScreen('contas')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'contas' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
-          id="btn-nav-contas"
+          onClick={() => {
+            if (activeModule === 'fab') {
+              setShowMobileSubmenu(prev => !prev);
+            } else {
+              setActiveModule('fab');
+              setShowMobileSubmenu(true);
+            }
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'fab' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
+          id="btn-nav-work"
         >
-          <Landmark size={18} className={activeScreen === 'contas' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[10px] font-black tracking-widest uppercase font-display">CONTAS</span>
+          <FABIcon size={18} className={activeModule === 'fab' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
+          <span className="text-[9px] font-black tracking-widest uppercase font-display">WORK</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveScreen('plan')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'plan' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
-          id="btn-nav-plan"
+          onClick={() => {
+            setActiveModule('fuel');
+            setActiveScreen('fuel');
+            setShowMobileSubmenu(false);
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'fuel' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
+          id="btn-nav-fuel"
         >
-          <Calendar size={18} className={activeScreen === 'plan' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[10px] font-black tracking-widest uppercase font-display">PLAN</span>
+          <Fuel size={18} className={activeModule === 'fuel' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
+          <span className="text-[9px] font-black tracking-widest uppercase font-display">FUEL</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveScreen('temp')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'temp' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
-          id="btn-nav-temp"
+          onClick={() => {
+            setActiveModule('games');
+            setActiveScreen('games');
+            setShowMobileSubmenu(false);
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'games' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
+          id="btn-nav-games"
         >
-          <Clock size={18} className={activeScreen === 'temp' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[10px] font-black tracking-widest uppercase font-display">TEMP</span>
+          <Gamepad2 size={18} className={activeModule === 'games' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
+          <span className="text-[9px] font-black tracking-widest uppercase font-display">GAMES</span>
         </button>
 
         <button
           type="button"
-          onClick={() => setActiveScreen('config')}
-          className={`flex flex-col items-center gap-1.5 cursor-pointer transition-all ${activeScreen === 'config' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
+          onClick={() => {
+            setActiveModule('system');
+            setActiveScreen('config');
+            setShowMobileSubmenu(false);
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'system' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-config"
         >
-          <Settings size={18} className={activeScreen === 'config' ? 'scale-110 text-brand-primary transition-transform rotate-45' : 'transition-transform'} />
-          <span className="text-[10px] font-black tracking-widest uppercase font-display">SYSTEM</span>
+          <Settings size={18} className={activeModule === 'system' ? 'scale-110 text-brand-primary transition-transform rotate-45' : 'transition-transform'} />
+          <span className="text-[9px] font-black tracking-widest uppercase font-display">SYSTEM</span>
         </button>
       </div>
 
@@ -3145,6 +4986,29 @@ export default function App() {
             className="absolute bottom-20 md:bottom-8 right-6 w-14 h-14 bg-brand-primary text-black rounded-full flex items-center justify-center shadow-2xl hover:brightness-110 z-30 cursor-pointer gold-glow ring-2 ring-brand-primary/20"
             title="Novo lançamento"
             id="global-add-fab-btn"
+          >
+            <Plus size={28} strokeWidth={3} />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* FAB (Floating Action Button): Visible only on FUEL screen */}
+      <AnimatePresence>
+        {activeScreen === 'fuel' && (
+          <motion.button
+            key="add-fuel-fab-button"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0, opacity: 0 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              setFuelError(null);
+              setIsFuelFormOpen(true);
+            }}
+            className="absolute bottom-20 md:bottom-8 right-6 w-14 h-14 bg-brand-primary text-black rounded-full flex items-center justify-center shadow-2xl hover:brightness-110 z-30 cursor-pointer gold-glow ring-2 ring-brand-primary/20"
+            title="Novo abastecimento"
+            id="global-add-fuel-fab-btn"
           >
             <Plus size={28} strokeWidth={3} />
           </motion.button>

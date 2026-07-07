@@ -48,6 +48,22 @@
         "patrimonyHistory": {
           "type": "array",
           "description": "Historical logged data points of user patrimony (monthYear, amount, id)."
+        },
+        "fuelEntries": {
+          "type": "array",
+          "description": "Fuel consumption logs and mileage records."
+        },
+        "lastMaintenance": {
+          "type": "object",
+          "properties": {
+            "date": { "type": "string" },
+            "km": { "type": "string" }
+          },
+          "description": "Details of the last vehicle maintenance service."
+        },
+        "contrachequeEntries": {
+          "type": "array",
+          "description": "Income and expense entries for the contracheque module."
         }
       },
       "required": ["user"]
