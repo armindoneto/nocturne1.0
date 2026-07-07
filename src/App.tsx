@@ -1973,7 +1973,11 @@ export default function App() {
         'nocturne_temp_categories',
         'nocturne_plan_entries',
         'nocturne_plan_incomes',
-        'nocturne_plan_cards'
+        'nocturne_plan_cards',
+        'nocturne_patrimony_history',
+        'nocturne_fuel_entries',
+        'nocturne_last_maintenance',
+        'nocturne_contracheque_entries'
       ];
       
       keysToBackup.forEach(key => {
@@ -2020,7 +2024,11 @@ export default function App() {
           'nocturne_temp_categories',
           'nocturne_plan_entries',
           'nocturne_plan_incomes',
-          'nocturne_plan_cards'
+          'nocturne_plan_cards',
+          'nocturne_patrimony_history',
+          'nocturne_fuel_entries',
+          'nocturne_last_maintenance',
+          'nocturne_contracheque_entries'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -2065,6 +2073,11 @@ export default function App() {
         if (backupData['nocturne_period_start'] !== undefined) setPeriodStart(backupData['nocturne_period_start'] || '');
         if (backupData['nocturne_period_end'] !== undefined) setPeriodEnd(backupData['nocturne_period_end'] || '');
         if (backupData['nocturne_period_total'] !== undefined) setPeriodTotal(backupData['nocturne_period_total'] ? parseFloat(backupData['nocturne_period_total']!) : 0);
+
+        if (backupData['nocturne_patrimony_history']) setPatrimonyHistory(JSON.parse(backupData['nocturne_patrimony_history']!));
+        if (backupData['nocturne_fuel_entries']) setFuelEntries(JSON.parse(backupData['nocturne_fuel_entries']!));
+        if (backupData['nocturne_last_maintenance']) setLastMaintenance(JSON.parse(backupData['nocturne_last_maintenance']!));
+        if (backupData['nocturne_contracheque_entries']) setContrachequeEntries(JSON.parse(backupData['nocturne_contracheque_entries']!));
         
         setActiveScreen('budget');
         setActiveModule('finance');
@@ -2695,52 +2708,6 @@ export default function App() {
             )}
           </div>
         </div>
-        
-        {/* Banner de erro de sincronização do Firebase */}
-        <AnimatePresence>
-          {firestoreWriteError && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-start gap-3.5 shadow-lg relative overflow-hidden"
-              id="firestore-write-error-banner"
-            >
-              <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-red-500/10 to-transparent rounded-bl-full pointer-events-none" />
-              <div className="p-2 bg-red-500/15 rounded-xl border border-red-500/25 text-red-400 shrink-0 mt-0.5">
-                <AlertTriangle size={16} strokeWidth={2.5} />
-              </div>
-              <div className="flex-1 space-y-2">
-                <div>
-                  <h4 className="text-xs font-black text-white uppercase tracking-wider">Falha na Sincronização em Nuvem</h4>
-                  <p className="text-[11px] text-red-200/95 leading-relaxed font-medium mt-1">
-                    {firestoreWriteError}
-                  </p>
-                </div>
-                <p className="text-[10px] text-text-muted leading-relaxed">
-                  Não se preocupe: seus dados continuam sendo salvos de forma 100% segura e offline em seu navegador (LocalStorage) para que você possa continuar usando o Nocturne sem perder nada.
-                </p>
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={handleExportBackup}
-                    className="bg-red-500/20 hover:bg-red-500/30 border border-red-500/35 text-red-200 text-[10px] font-bold uppercase tracking-wider py-1.5 px-3 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
-                  >
-                    <FileText size={12} /> Fazer Backup Manual (JSON)
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFirestoreWriteError(null)}
-                className="text-text-muted hover:text-white transition-colors cursor-pointer p-1 rounded-lg hover:bg-white/5 shrink-0"
-                title="Desconsiderar aviso"
-              >
-                <X size={14} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {activeScreen === 'budget' && (
           <>
