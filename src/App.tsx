@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'motion/react';
 import {
   Utensils,
@@ -53,14 +53,22 @@ import {
   Plane,
   ListOrdered,
   AlertTriangle,
-  X
+  Award,
+  X,
+  Motorbike,
+  ScrollText,
+  CalendarDays
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry } from './types';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
-import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from './firebase';
-import type { FirebaseUser } from './firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { getSupabase, isSupabaseConfigured } from './supabase';
+export interface AppUser {
+  uid: string;
+  email?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+}
 import {
   INITIAL_USER,
   INITIAL_ACCOUNTS,
@@ -73,6 +81,10 @@ import TransactionForm from './components/TransactionForm';
 import CardItem from './components/CardItem';
 import PlanScreen from './components/PlanScreen';
 import ContrachequeScreen from './components/ContrachequeScreen';
+import HistoricoScreen from './components/HistoricoScreen';
+import ME4Screen from './components/ME4Screen';
+import NotesScreen from './components/NotesScreen';
+import { AppNote } from './types';
 
 export const ACCOUNT_COLORS = [
   { value: 'brand-primary', label: 'Dourado', bgClass: 'bg-brand-primary' },
@@ -192,12 +204,17 @@ const FABIcon = ({ size = 16, className = '' }: { size?: number, className?: str
 
 export default function App() {
   // --- Firebase Auth & Synced States ---
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [dataLoadedFromFirestore, setDataLoadedFromFirestore] = useState(false);
   const [saveLoading, setSaveLoading] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [firestoreWriteError, setFirestoreWriteError] = useState<string | null>(null);
+  const [cloudLastSynced, setCloudLastSynced] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const lastProcessedUserIdRef = useRef<string | null>(null);
 
   // --- Service Worker & Update States ---
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -337,10 +354,11 @@ export default function App() {
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala'>('budget');
   const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'system'>('finance');
-  const [isFinanceExpanded, setIsFinanceExpanded] = useState(true);
-  const [isWorkExpanded, setIsWorkExpanded] = useState(true);
+  const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
+  const [isWorkExpanded, setIsWorkExpanded] = useState(false);
+  const [isFuelExpanded, setIsFuelExpanded] = useState(false);
   const [showMobileSubmenu, setShowMobileSubmenu] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountBalance, setNewAccountBalance] = useState('');
@@ -511,6 +529,77 @@ export default function App() {
   const [contrachequeSearchQuery, setContrachequeSearchQuery] = useState('');
   const [contrachequeIsResumoView, setContrachequeIsResumoView] = useState(false);
 
+  // --- Historico States ---
+  const [historicoEntries, setHistoricoEntries] = useState<HistoricoEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_historico_entries');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as HistoricoEntry[];
+      } catch (_) {}
+    }
+    return [
+      {
+        id: 'seed-1',
+        category: 'CURSOS',
+        name: 'Curso de Aperfeiçoamento de Oficiais',
+        location: 'Rio de Janeiro - RJ',
+        startDate: '01/03/2025',
+        endDate: '15/05/2025',
+        travelDays: 2
+      },
+      {
+        id: 'seed-2',
+        category: 'MISSÕES',
+        name: 'Operação Ostentação',
+        location: 'Manaus - AM',
+        startDate: '10/10/2025',
+        endDate: '25/10/2025',
+        travelDays: 4
+      },
+      {
+        id: 'seed-3',
+        category: 'INSTRUÇÃO',
+        name: 'Instrução de Voo Avançado',
+        location: 'Natal - RN',
+        startDate: '05/01/2026',
+        endDate: '12/01/2026',
+        travelDays: 1
+      }
+    ];
+  });
+  const [historicoIsAfastamentosView, setHistoricoIsAfastamentosView] = useState(false);
+
+  // --- ME4 States ---
+  const [me4Exclusions, setMe4Exclusions] = useState<ME4Exclusion[]>(() => {
+    const saved = localStorage.getItem('nocturne_me4_exclusions');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as ME4Exclusion[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  const [me4Highlights, setMe4Highlights] = useState<string[]>(() => {
+    const saved = localStorage.getItem('nocturne_me4_highlights');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as string[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  const [notes, setNotes] = useState<AppNote[]>(() => {
+    const saved = localStorage.getItem('nocturne_notes');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as AppNote[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
   // --- Plan States ---
   const [planMonth, setPlanMonth] = useState<string>(() => {
     const saved = localStorage.getItem('nocturne_active_plan_month');
@@ -651,6 +740,22 @@ export default function App() {
   }, [contrachequeEntries]);
 
   useEffect(() => {
+    localStorage.setItem('nocturne_historico_entries', JSON.stringify(historicoEntries));
+  }, [historicoEntries]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_me4_exclusions', JSON.stringify(me4Exclusions));
+  }, [me4Exclusions]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_me4_highlights', JSON.stringify(me4Highlights));
+  }, [me4Highlights]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_notes', JSON.stringify(notes));
+  }, [notes]);
+
+  useEffect(() => {
     localStorage.setItem('nocturne_last_maintenance', JSON.stringify(lastMaintenance));
   }, [lastMaintenance]);
 
@@ -714,220 +819,72 @@ export default function App() {
     localStorage.setItem('nocturne_plan_cards', JSON.stringify(planCards));
   }, [planCards]);
 
-  // --- Firebase Authenticated Sync & Listeners ---
+  // --- Supabase Authenticated Sync & Listeners ---
   const handleFirestoreError = (error: unknown, operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write', path: string | null) => {
     const errInfo = {
       error: error instanceof Error ? error.message : String(error),
       authInfo: {
-        userId: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        emailVerified: auth.currentUser?.emailVerified,
-        isAnonymous: auth.currentUser?.isAnonymous,
-        tenantId: auth.currentUser?.tenantId,
-        providerInfo: auth.currentUser?.providerData?.map(provider => ({
-          providerId: provider.providerId,
-          email: provider.email,
-        })) || []
+        userId: firebaseUser?.uid,
+        email: firebaseUser?.email,
+        emailVerified: false,
+        isAnonymous: false,
+        tenantId: null,
+        providerInfo: []
       },
       operationType,
       path
     };
-    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    console.error('Database Error: ', JSON.stringify(errInfo));
     throw new Error(JSON.stringify(errInfo));
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setFirebaseUser(u);
+    const supabase = getSupabase();
+    if (!supabase) {
+      setAuthLoading(false);
+      return;
+    }
+
+    const handleUserSession = async (session: any) => {
+      const u = session?.user;
       if (u) {
+        if (lastProcessedUserIdRef.current === u.id) {
+          return;
+        }
+        lastProcessedUserIdRef.current = u.id;
         setAuthLoading(true);
-        const pathStr = `users/${u.uid}`;
+        const appUserObj = {
+          uid: u.id,
+          email: u.email,
+          displayName: u.user_metadata?.full_name || u.email?.split('@')[0] || 'Usuário',
+          photoURL: u.user_metadata?.avatar_url || null
+        };
+        setFirebaseUser(appUserObj);
+
         try {
-          const docRef = doc(db, 'users', u.uid);
-          let docSnap;
-          try {
-            docSnap = await getDoc(docRef);
-            setIsOffline(false);
-          } catch (getErr) {
-            const isConnErr = getErr instanceof Error && (
-              getErr.message.includes('unavailable') || 
-              getErr.message.includes('Could not reach Cloud Firestore') ||
-              getErr.message.includes('offline') ||
-              getErr.message.includes('Failed to get document because the client is offline')
-            );
-            if (isConnErr) {
-              console.warn("Firestore backend is unreachable. Operating in Offline Mode.");
-              setIsOffline(true);
-              setDataLoadedFromFirestore(false);
-              setAuthLoading(false);
-              triggerToast('Modo Offline: Operando com dados locais.');
-              return;
-            }
-            
-            console.error("Firestore getDoc failed:", getErr);
-            const errStr = getErr instanceof Error ? getErr.message : String(getErr);
-            let userFriendlyMsg = `Falha ao carregar dados da nuvem: ${errStr}`;
-            
-            if (errStr.toLowerCase().includes('resource-exhausted') || errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('limit')) {
-              userFriendlyMsg = 'Limite de cota de leitura do Firebase atingido (Limite gratuito diário excedido). Seus dados estão sendo exibidos e gravados apenas localmente em seu navegador.';
-            } else if (errStr.toLowerCase().includes('permission-denied') || errStr.toLowerCase().includes('permission')) {
-              userFriendlyMsg = 'Permissão de leitura negada no Firebase. Por favor, tente sair e entrar novamente na sua conta.';
-            }
-            
-            setFirestoreWriteError(userFriendlyMsg);
+          const { data: dbData, error: fetchErr } = await supabase
+            .from('nocturne_data')
+            .select('data, updated_at')
+            .eq('user_id', u.id)
+            .maybeSingle();
+
+          setIsOffline(false);
+
+          if (fetchErr) {
+            console.error("Supabase fetch failed:", fetchErr);
+            setFirestoreWriteError(`Falha ao carregar dados do Supabase: ${fetchErr.message}`);
             setIsOffline(true);
             setDataLoadedFromFirestore(true);
             setAuthLoading(false);
             return;
           }
 
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            if (data.user) setUser(prev => ({ ...prev, ...data.user }));
-            if (data.accounts) {
-              const loadedAccs = (data.accounts as Account[]).map(acc => {
-                let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
-                if (updated.name === 'Repo Nu') {
-                  updated = { ...updated, name: 'PIX' };
-                }
-                return updated;
-              });
-              setAccounts(prev => {
-                const merged = [...loadedAccs];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-            if (data.budgetAccounts) {
-              const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
-              setBudgetAccounts(prev => {
-                const merged = [...loadedBudgetAccs];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-            if (data.transactions) {
-              const loadedTxs = (data.transactions as Transaction[]).map(tx => {
-                let updated = tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx;
-                if (updated.account === 'Repo Nu') {
-                  updated = { ...updated, account: 'PIX' };
-                }
-                return updated;
-              });
-              setTransactions(prev => {
-                const merged = [...loadedTxs];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-            if (data.cards) {
-              setCards(prev => {
-                const merged = [...data.cards];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-            if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
-            if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
-            if (data.periodEnd !== undefined) setPeriodEnd(data.periodEnd);
-            if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
-            if (data.tempCategories) {
-              setTempCategories(prev => {
-                const merged = [...data.tempCategories];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-            if (data.patrimonyHistory) {
-              setPatrimonyHistory(prev => {
-                const merged = [...data.patrimonyHistory];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-            let finalPlanEntries = data.planEntries || [];
-            let finalPlanCards = data.planCards || [];
+          if (dbData && (dbData as any).updated_at) {
+            setCloudLastSynced((dbData as any).updated_at);
+          }
 
-            if (!data.didClearLegacyCards_v10) {
-              finalPlanCards = [];
-              finalPlanEntries = finalPlanEntries.filter((entry: any) => entry.category !== 'cartoes' && !entry.cardId);
-              localStorage.setItem('nocturne_cards_cleared_v10', 'true');
-              triggerToast('Banco de cartões planejado resetado com sucesso!');
-            }
-
-            setPlanEntries(prev => {
-              const merged = [...finalPlanEntries];
-              prev.forEach(localItem => {
-                if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                  merged.push(localItem);
-                }
-              });
-              return merged;
-            });
-            if (data.planIncomes) {
-              setPlanIncomes(prev => ({ ...prev, ...data.planIncomes }));
-            }
-            setPlanCards(prev => {
-              const merged = [...finalPlanCards];
-              prev.forEach(localItem => {
-                if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                  merged.push(localItem);
-                }
-              });
-              return merged;
-            });
-            if (data.activePlanMonth !== undefined) setActivePlanMonth(data.activePlanMonth);
-            if (data.fuelEntries) {
-              setFuelEntries(prev => {
-                const merged = [...data.fuelEntries];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged.sort((a, b) => a.km - b.km);
-              });
-            }
-            if (data.lastMaintenance !== undefined) {
-              setLastMaintenance(data.lastMaintenance);
-            }
-            if (data.contrachequeEntries !== undefined) {
-              setContrachequeEntries(prev => {
-                const merged = [...data.contrachequeEntries];
-                prev.forEach(localItem => {
-                  if (!merged.some(remoteItem => remoteItem.id === localItem.id)) {
-                    merged.push(localItem);
-                  }
-                });
-                return merged;
-              });
-            }
-          } else {
-            // Document doesn't exist, migrate or initialize
+          if (!dbData) {
+            // Document doesn't exist yet, insert initial state
             const initialSyncData = {
               user,
               accounts,
@@ -943,6 +900,9 @@ export default function App() {
               fuelEntries,
               lastMaintenance,
               contrachequeEntries,
+              historicoEntries,
+              me4Exclusions,
+              notes,
               planEntries,
               planIncomes,
               planCards,
@@ -951,55 +911,129 @@ export default function App() {
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
             };
-            try {
-              await setDoc(docRef, JSON.parse(JSON.stringify(initialSyncData)));
-              setIsOffline(false);
+            
+            const { error: insertErr } = await supabase
+              .from('nocturne_data')
+              .insert({
+                user_id: u.id,
+                data: JSON.parse(JSON.stringify(initialSyncData))
+              });
+
+            if (insertErr) {
+              console.error("Supabase insert failed:", insertErr);
+              setFirestoreWriteError(`Falha ao inicializar dados na nuvem: ${insertErr.message}`);
+            } else {
               setFirestoreWriteError(null);
-            } catch (writeErr) {
-              const isConnErr = writeErr instanceof Error && (
-                writeErr.message.includes('unavailable') || 
-                writeErr.message.includes('Could not reach Cloud Firestore') ||
-                writeErr.message.includes('offline')
-              );
-              if (isConnErr) {
-                console.warn("Firestore backend is unreachable during init. Operating in Offline Mode.");
-                setIsOffline(true);
-                setDataLoadedFromFirestore(false);
-                setAuthLoading(false);
-                triggerToast('Modo Offline: Operando com dados locais.');
-                return;
-              }
-              
-              console.error("Firestore init setDoc failed:", writeErr);
-              const errStr = writeErr instanceof Error ? writeErr.message : String(writeErr);
-              let userFriendlyMsg = `Falha ao salvar dados iniciais na nuvem: ${errStr}`;
-              
-              if (errStr.toLowerCase().includes('resource-exhausted') || errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('limit')) {
-                userFriendlyMsg = 'Limite de cota de gravação do Firebase atingido (Limite gratuito diário excedido). Seus dados estão sendo gravados localmente em seu navegador e serão sincronizados quando a cota reiniciar.';
-              } else if (errStr.toLowerCase().includes('permission-denied') || errStr.toLowerCase().includes('permission')) {
-                userFriendlyMsg = 'Permissão de gravação negada no Firebase. Por favor, tente sair e entrar novamente na sua conta.';
-              }
-              
-              setFirestoreWriteError(userFriendlyMsg);
-              setDataLoadedFromFirestore(true);
-              setAuthLoading(false);
-              return;
             }
+            setDataLoadedFromFirestore(true);
+            setAuthLoading(false);
+            return;
+          }
+
+          if (dbData && dbData.data) {
+            const data = dbData.data;
+            if (data.user) setUser(data.user);
+            if (data.accounts) {
+              const loadedAccs = (data.accounts as Account[]).map(acc => {
+                let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
+                if (updated.name === 'Repo Nu') {
+                  updated = { ...updated, name: 'PIX' };
+                }
+                return updated;
+              });
+              setAccounts(loadedAccs);
+            }
+            if (data.budgetAccounts) {
+              const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
+              setBudgetAccounts(loadedBudgetAccs);
+            }
+            if (data.transactions) {
+              const loadedTxs = (data.transactions as Transaction[]).map(tx => {
+                let updated = tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx;
+                if (updated.account === 'Repo Nu') {
+                  updated = { ...updated, account: 'PIX' };
+                }
+                return updated;
+              });
+              setTransactions(loadedTxs);
+            }
+            if (data.cards) {
+              setCards(data.cards);
+            }
+            if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
+            if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
+            if (data.periodEnd !== undefined) setPeriodEnd(data.periodEnd);
+            if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
+            if (data.tempCategories) {
+              setTempCategories(data.tempCategories);
+            }
+            if (data.patrimonyHistory) {
+              setPatrimonyHistory(data.patrimonyHistory);
+            }
+            
+            let finalPlanEntries = data.planEntries || [];
+            let finalPlanCards = data.planCards || [];
+
+            if (!data.didClearLegacyCards_v10) {
+              finalPlanCards = [];
+              finalPlanEntries = finalPlanEntries.filter((entry: any) => entry.category !== 'cartoes' && !entry.cardId);
+              localStorage.setItem('nocturne_cards_cleared_v10', 'true');
+              triggerToast('Banco de cartões planejado resetado com sucesso!');
+            }
+
+            setPlanEntries(finalPlanEntries);
+            if (data.planIncomes) {
+              setPlanIncomes(data.planIncomes);
+            }
+            setPlanCards(finalPlanCards);
+            if (data.activePlanMonth !== undefined) setActivePlanMonth(data.activePlanMonth);
+            if (data.fuelEntries) {
+              setFuelEntries((data.fuelEntries as FuelEntry[]).sort((a, b) => a.km - b.km));
+            }
+            if (data.lastMaintenance !== undefined) {
+              setLastMaintenance(data.lastMaintenance);
+            }
+            if (data.contrachequeEntries !== undefined) {
+              setContrachequeEntries(data.contrachequeEntries);
+            }
+            if (data.historicoEntries !== undefined) {
+              setHistoricoEntries(data.historicoEntries);
+            }
+            if (data.me4Exclusions !== undefined) {
+              setMe4Exclusions(data.me4Exclusions);
+            }
+            if (data.me4Highlights !== undefined) {
+              setMe4Highlights(data.me4Highlights);
+            }
+            if (data.notes !== undefined) {
+              setNotes(data.notes);
+            }
+            setFirestoreWriteError(null);
           }
           setDataLoadedFromFirestore(true);
-        } catch (err) {
-          console.error('Error fetching data from Firestore:', err);
-          triggerToast('Erro ao sincronizar dados com o servidor.');
+        } catch (err: any) {
+          console.error('Error fetching Supabase data:', err);
+          setFirestoreWriteError(`Falha ao sincronizar dados com o Supabase: ${err.message}`);
+          setIsOffline(true);
+          setDataLoadedFromFirestore(true);
         } finally {
           setAuthLoading(false);
         }
       } else {
+        lastProcessedUserIdRef.current = null;
+        setFirebaseUser(null);
         setDataLoadedFromFirestore(false);
         setAuthLoading(false);
       }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      handleUserSession(session);
     });
 
-    return () => unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   // Proactive runtime migration for 'Repo Nu' -> 'PIX'
@@ -1045,15 +1079,19 @@ export default function App() {
     }
   }, [transactions]);
 
-  // Synchronize with Firestore (Cloud Database)
+  // Synchronize with Supabase (Cloud Database)
   useEffect(() => {
     if (!firebaseUser || !dataLoadedFromFirestore) return;
 
     const timer = setTimeout(async () => {
       setSaveLoading(true);
-      const pathStr = `users/${firebaseUser.uid}`;
+      const supabase = getSupabase();
+      if (!supabase) {
+        setSaveLoading(false);
+        return;
+      }
+
       try {
-        const docRef = doc(db, 'users', firebaseUser.uid);
         const dataToSave = {
           user,
           accounts,
@@ -1069,6 +1107,10 @@ export default function App() {
           fuelEntries,
           lastMaintenance,
           contrachequeEntries,
+          historicoEntries,
+          me4Exclusions,
+          me4Highlights,
+          notes,
           planEntries,
           planIncomes,
           planCards,
@@ -1077,36 +1119,28 @@ export default function App() {
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
         };
-        try {
-          await setDoc(docRef, JSON.parse(JSON.stringify(dataToSave)));
+
+        const nowStr = new Date().toISOString();
+        const { error: saveErr } = await supabase
+          .from('nocturne_data')
+          .upsert({
+            user_id: firebaseUser.uid,
+            data: JSON.parse(JSON.stringify(dataToSave)),
+            updated_at: nowStr
+          });
+
+        if (saveErr) {
+          console.error("Supabase upsert failed:", saveErr);
+          setFirestoreWriteError(`Falha ao salvar dados na nuvem: ${saveErr.message}`);
+          setIsOffline(true);
+        } else {
           setIsOffline(false);
           setFirestoreWriteError(null);
-        } catch (writeErr) {
-          const isConnErr = writeErr instanceof Error && (
-            writeErr.message.includes('unavailable') || 
-            writeErr.message.includes('Could not reach Cloud Firestore') ||
-            writeErr.message.includes('offline')
-          );
-          if (isConnErr) {
-            console.warn("Could not sync to Firestore due to connection failure. Data remains saved in localStorage.");
-            setIsOffline(true);
-            return;
-          }
-          
-          console.error("Firestore write failed:", writeErr);
-          const errStr = writeErr instanceof Error ? writeErr.message : String(writeErr);
-          let userFriendlyMsg = `Falha ao salvar dados na nuvem: ${errStr}`;
-          
-          if (errStr.toLowerCase().includes('resource-exhausted') || errStr.toLowerCase().includes('quota') || errStr.toLowerCase().includes('limit')) {
-            userFriendlyMsg = 'Limite de cota de gravação do Firebase atingido (Limite gratuito diário excedido). Seus dados estão sendo gravados apenas localmente em seu navegador e serão sincronizados automaticamente quando a cota reiniciar.';
-          } else if (errStr.toLowerCase().includes('permission-denied') || errStr.toLowerCase().includes('permission')) {
-            userFriendlyMsg = 'Permissão de gravação negada no Firebase. Por favor, tente sair e entrar novamente na sua conta.';
-          }
-          
-          setFirestoreWriteError(userFriendlyMsg);
+          setCloudLastSynced(nowStr);
         }
-      } catch (err) {
-        console.error('Error saving data to Firestore:', err);
+      } catch (err: any) {
+        console.error('Error saving data to Supabase:', err);
+        setFirestoreWriteError(`Erro ao conectar ao Supabase: ${err.message}`);
       } finally {
         setSaveLoading(false);
       }
@@ -1132,7 +1166,12 @@ export default function App() {
     planCards,
     fuelEntries,
     lastMaintenance,
-    contrachequeEntries
+    contrachequeEntries,
+    historicoEntries,
+    me4Exclusions,
+    me4Highlights,
+    notes,
+    activePlanMonth
   ]);
 
   // One-time automatic migration to clean up duplicate cards in Firebase / LocalStorage
@@ -1163,17 +1202,90 @@ export default function App() {
   }, [dataLoadedFromFirestore, planEntries, planCards]);
 
   const handleGoogleSignIn = async () => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      triggerToast('Supabase não configurado.');
+      return;
+    }
     try {
       setAuthLoading(true);
-      await signInWithPopup(auth, googleProvider);
-      triggerToast('Sessão iniciada com sucesso!');
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
     } catch (err: any) {
       console.error('Google login error:', err);
-      if (err.code === 'auth/popup-blocked') {
-        triggerToast('Popup de login bloqueada. Tente abrir o app em nova aba!');
+      triggerToast(`Falha ao autenticar com Google: ${err.message}`);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleEmailSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput || !passwordInput) {
+      triggerToast('Por favor, preencha o e-mail e a senha.');
+      return;
+    }
+    const supabase = getSupabase();
+    if (!supabase) {
+      triggerToast('Supabase não configurado.');
+      return;
+    }
+    try {
+      setAuthLoading(true);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailInput,
+        password: passwordInput,
+      });
+      if (error) throw error;
+      triggerToast('Sessão iniciada com sucesso!');
+    } catch (err: any) {
+      console.error('Email sign in error:', err);
+      if (err.message && (err.message.includes('Email not confirmed') || err.message.includes('not confirmed'))) {
+        triggerToast('E-mail não verificado! Verifique seu e-mail para ativar a conta, ou desative "Confirm email" no painel do Supabase (Auth > Providers > Email).');
       } else {
-        triggerToast('Falha ao autenticar com Google.');
+        triggerToast(`Erro ao entrar: ${err.message || err.error_description || 'Senha inválida ou usuário não cadastrado.'}`);
       }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailInput || !passwordInput) {
+      triggerToast('Por favor, preencha o e-mail e a senha.');
+      return;
+    }
+    if (passwordInput.length < 6) {
+      triggerToast('A senha precisa ter pelo menos 6 caracteres.');
+      return;
+    }
+    const supabase = getSupabase();
+    if (!supabase) {
+      triggerToast('Supabase não configurado.');
+      return;
+    }
+    try {
+      setAuthLoading(true);
+      const { data, error } = await supabase.auth.signUp({
+        email: emailInput,
+        password: passwordInput,
+      });
+      if (error) throw error;
+      
+      if (data?.session) {
+        triggerToast('Conta criada e logada com sucesso!');
+      } else {
+        triggerToast('Conta criada! Se o Supabase exigir confirmação por e-mail, confirme-o antes de tentar entrar.');
+      }
+    } catch (err: any) {
+      console.error('Email sign up error:', err);
+      triggerToast(`Erro ao cadastrar: ${err.message || err.error_description || 'Falha ao realizar cadastro.'}`);
     } finally {
       setAuthLoading(false);
     }
@@ -1182,7 +1294,50 @@ export default function App() {
   const handleSignOut = async () => {
     try {
       setAuthLoading(true);
-      await signOut(auth);
+      const supabase = getSupabase();
+      if (supabase && firebaseUser && firebaseUser.uid !== 'local-user') {
+        // Save current states to Supabase before logging out to prevent loss of recent modifications
+        const dataToSave = {
+          user,
+          accounts,
+          budgetAccounts,
+          transactions,
+          cards,
+          periodActive,
+          periodStart,
+          periodEnd,
+          periodTotal,
+          tempCategories,
+          patrimonyHistory,
+          fuelEntries,
+          lastMaintenance,
+          contrachequeEntries,
+          historicoEntries,
+          me4Exclusions,
+          me4Highlights,
+          notes,
+          planEntries,
+          planIncomes,
+          planCards,
+          activePlanMonth,
+          didClearLegacyCards_v8: true,
+          didClearLegacyCards_v9: true,
+          didClearLegacyCards_v10: true
+        };
+        const { error: saveErr } = await supabase
+          .from('nocturne_data')
+          .upsert({
+            user_id: firebaseUser.uid,
+            data: JSON.parse(JSON.stringify(dataToSave)),
+            updated_at: new Date().toISOString()
+          });
+        if (saveErr) {
+          console.error("Save on sign out failed:", saveErr);
+        }
+      }
+      if (supabase) {
+        await supabase.auth.signOut();
+      }
       // Reset to initials on logout
       setUser(INITIAL_USER);
       setAccounts(INITIAL_ACCOUNTS);
@@ -1200,6 +1355,8 @@ export default function App() {
       setPeriodEnd('');
       setPeriodTotal(0);
       setTempCategories([]);
+      setMe4Exclusions([]);
+      setMe4Highlights([]);
       setPatrimonyHistory([
         { id: 'pe-1', monthYear: '02/2026', amount: 48000.00 },
         { id: 'pe-2', monthYear: '03/2026', amount: 52500.00 },
@@ -1977,7 +2134,11 @@ export default function App() {
         'nocturne_patrimony_history',
         'nocturne_fuel_entries',
         'nocturne_last_maintenance',
-        'nocturne_contracheque_entries'
+        'nocturne_contracheque_entries',
+        'nocturne_historico_entries',
+        'nocturne_me4_exclusions',
+        'nocturne_me4_highlights',
+        'nocturne_notes'
       ];
       
       keysToBackup.forEach(key => {
@@ -2028,7 +2189,11 @@ export default function App() {
           'nocturne_patrimony_history',
           'nocturne_fuel_entries',
           'nocturne_last_maintenance',
-          'nocturne_contracheque_entries'
+          'nocturne_contracheque_entries',
+          'nocturne_historico_entries',
+          'nocturne_me4_exclusions',
+          'nocturne_me4_highlights',
+          'nocturne_notes'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -2078,7 +2243,89 @@ export default function App() {
         if (backupData['nocturne_fuel_entries']) setFuelEntries(JSON.parse(backupData['nocturne_fuel_entries']!));
         if (backupData['nocturne_last_maintenance']) setLastMaintenance(JSON.parse(backupData['nocturne_last_maintenance']!));
         if (backupData['nocturne_contracheque_entries']) setContrachequeEntries(JSON.parse(backupData['nocturne_contracheque_entries']!));
+        if (backupData['nocturne_historico_entries']) setHistoricoEntries(JSON.parse(backupData['nocturne_historico_entries']!));
+        if (backupData['nocturne_me4_exclusions']) setMe4Exclusions(JSON.parse(backupData['nocturne_me4_exclusions']!));
+        if (backupData['nocturne_me4_highlights']) setMe4Highlights(JSON.parse(backupData['nocturne_me4_highlights']!));
+        if (backupData['nocturne_notes']) setNotes(JSON.parse(backupData['nocturne_notes']!));
         
+        if (firebaseUser && firebaseUser.uid !== 'local-user') {
+          setDataLoadedFromFirestore(true);
+          
+          // Immediate synchronous upload to Supabase to prevent loss on fast logout
+          const supabase = getSupabase();
+          if (supabase) {
+            const parsedUser = backupData['nocturne_user'] ? JSON.parse(backupData['nocturne_user']!) : user;
+            const parsedAccounts = backupData['nocturne_accounts']
+              ? (JSON.parse(backupData['nocturne_accounts']!) as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc)
+              : accounts;
+            const parsedBudgetAccounts = backupData['nocturne_budget_accounts']
+              ? (JSON.parse(backupData['nocturne_budget_accounts']!) as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc)
+              : budgetAccounts;
+            const parsedTransactions = backupData['nocturne_transactions']
+              ? (JSON.parse(backupData['nocturne_transactions']!) as Transaction[]).map(tx => tx.account === 'Repo Nu' ? { ...tx, account: 'PIX' } : tx)
+              : transactions;
+            const parsedCards = backupData['nocturne_cards'] ? JSON.parse(backupData['nocturne_cards']!) : cards;
+            const parsedTempCategories = backupData['nocturne_temp_categories'] ? JSON.parse(backupData['nocturne_temp_categories']!) : tempCategories;
+            const parsedPlanEntries = backupData['nocturne_plan_entries'] ? JSON.parse(backupData['nocturne_plan_entries']!) : planEntries;
+            const parsedPlanIncomes = backupData['nocturne_plan_incomes'] ? JSON.parse(backupData['nocturne_plan_incomes']!) : planIncomes;
+            const parsedPlanCards = backupData['nocturne_plan_cards'] ? JSON.parse(backupData['nocturne_plan_cards']!) : planCards;
+            const parsedPatrimonyHistory = backupData['nocturne_patrimony_history'] ? JSON.parse(backupData['nocturne_patrimony_history']!) : patrimonyHistory;
+            const parsedFuelEntries = backupData['nocturne_fuel_entries'] ? JSON.parse(backupData['nocturne_fuel_entries']!) : fuelEntries;
+            const parsedLastMaintenance = backupData['nocturne_last_maintenance'] ? JSON.parse(backupData['nocturne_last_maintenance']!) : lastMaintenance;
+            const parsedContrachequeEntries = backupData['nocturne_contracheque_entries'] ? JSON.parse(backupData['nocturne_contracheque_entries']!) : contrachequeEntries;
+            const parsedHistoricoEntries = backupData['nocturne_historico_entries'] ? JSON.parse(backupData['nocturne_historico_entries']!) : historicoEntries;
+            const parsedMe4Exclusions = backupData['nocturne_me4_exclusions'] ? JSON.parse(backupData['nocturne_me4_exclusions']!) : me4Exclusions;
+            const parsedMe4Highlights = backupData['nocturne_me4_highlights'] ? JSON.parse(backupData['nocturne_me4_highlights']!) : me4Highlights;
+            const parsedNotes = backupData['nocturne_notes'] ? JSON.parse(backupData['nocturne_notes']!) : notes;
+
+            const dataToSave = {
+              user: parsedUser,
+              accounts: parsedAccounts,
+              budgetAccounts: parsedBudgetAccounts,
+              transactions: parsedTransactions,
+              cards: parsedCards,
+              periodActive: backupData['nocturne_period_active'] === 'true',
+              periodStart: backupData['nocturne_period_start'] || '',
+              periodEnd: backupData['nocturne_period_end'] || '',
+              periodTotal: backupData['nocturne_period_total'] ? parseFloat(backupData['nocturne_period_total']!) : 0,
+              tempCategories: parsedTempCategories,
+              patrimonyHistory: parsedPatrimonyHistory,
+              fuelEntries: parsedFuelEntries,
+              lastMaintenance: parsedLastMaintenance,
+              contrachequeEntries: parsedContrachequeEntries,
+              historicoEntries: parsedHistoricoEntries,
+              me4Exclusions: parsedMe4Exclusions,
+              me4Highlights: parsedMe4Highlights,
+              notes: parsedNotes,
+              planEntries: parsedPlanEntries,
+              planIncomes: parsedPlanIncomes,
+              planCards: parsedPlanCards,
+              activePlanMonth: activePlanMonth,
+              didClearLegacyCards_v8: true,
+              didClearLegacyCards_v9: true,
+              didClearLegacyCards_v10: true
+            };
+
+            const nowStr = new Date().toISOString();
+            supabase
+              .from('nocturne_data')
+              .upsert({
+                user_id: firebaseUser.uid,
+                data: JSON.parse(JSON.stringify(dataToSave)),
+                updated_at: nowStr
+              })
+              .then(({ error: saveErr }) => {
+                if (saveErr) {
+                  console.error("Immediate Supabase upsert failed:", saveErr);
+                  triggerToast(`Erro ao salvar importação na nuvem: ${saveErr.message}`);
+                } else {
+                  setCloudLastSynced(nowStr);
+                  triggerToast('Backup importado e salvo na nuvem com sucesso!');
+                }
+              });
+          }
+        }
+
         setActiveScreen('budget');
         setActiveModule('finance');
       } catch (err) {
@@ -2088,6 +2335,79 @@ export default function App() {
     };
     reader.readAsText(file);
     event.target.value = '';
+  };
+
+  const handleManualSync = async () => {
+    if (!firebaseUser) {
+      triggerToast('Você precisa estar logado para sincronizar com a nuvem.');
+      return;
+    }
+    if (firebaseUser.uid === 'local-user') {
+      triggerToast('Modo Offline: não é possível salvar na nuvem.');
+      return;
+    }
+    
+    setSaveLoading(true);
+    const supabase = getSupabase();
+    if (!supabase) {
+      triggerToast('Supabase não configurado.');
+      setSaveLoading(false);
+      return;
+    }
+
+    try {
+      const dataToSave = {
+        user,
+        accounts,
+        budgetAccounts,
+        transactions,
+        cards,
+        periodActive,
+        periodStart,
+        periodEnd,
+        periodTotal,
+        tempCategories,
+        patrimonyHistory,
+        fuelEntries,
+        lastMaintenance,
+        contrachequeEntries,
+        historicoEntries,
+        me4Exclusions,
+        me4Highlights,
+        notes,
+        planEntries,
+        planIncomes,
+        planCards,
+        activePlanMonth,
+        didClearLegacyCards_v8: true,
+        didClearLegacyCards_v9: true,
+        didClearLegacyCards_v10: true
+      };
+
+      const nowStr = new Date().toISOString();
+      const { error: saveErr } = await supabase
+        .from('nocturne_data')
+        .upsert({
+          user_id: firebaseUser.uid,
+          data: JSON.parse(JSON.stringify(dataToSave)),
+          updated_at: nowStr
+        });
+
+      if (saveErr) {
+        console.error("Supabase manual upsert failed:", saveErr);
+        triggerToast(`Erro ao sincronizar: ${saveErr.message}`);
+      } else {
+        triggerToast('Sincronizado com a nuvem com sucesso!');
+        setCloudLastSynced(nowStr);
+        setIsOffline(false);
+        setFirestoreWriteError(null);
+      }
+    } catch (err: any) {
+      console.error('Error in manual sync:', err);
+      triggerToast(`Erro ao sincronizar: ${err.message || err}`);
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   // --- Transaction queries & filters calculation ---
@@ -2192,19 +2512,17 @@ export default function App() {
     );
   }
 
-  if (!firebaseUser) {
+  if (!isSupabaseConfigured) {
     return (
-      <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-6 text-center select-none" id="welcome-login-screen">
+      <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-6 select-none" id="welcome-login-screen">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.4 }}
-          className="max-w-md w-full bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-8 shadow-2xl space-y-8 relative overflow-hidden"
+          className="max-w-xl w-full bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-8 shadow-2xl space-y-6 text-left relative overflow-hidden"
           id="welcome-card"
         >
-          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
-          
-          <div className="flex flex-col items-center space-y-3" id="welcome-brand">
+          <div className="flex flex-col items-center text-center space-y-3" id="welcome-brand">
             <img 
               src="/favicon.jpg" 
               alt="Nocturne Logo" 
@@ -2213,34 +2531,129 @@ export default function App() {
               id="brand-emblem-img"
             />
             <span className="text-[10px] text-brand-primary font-mono tracking-widest font-black uppercase">
-              Nocturne
+              Nocturne • Supabase
             </span>
-            <h1 className="text-3xl font-display font-black text-white tracking-tight">
-              Seus Dados na Nuvem
+            <h1 className="text-2xl font-display font-black text-white tracking-tight">
+              Configuração do Supabase Necessária
             </h1>
           </div>
 
-          <div className="text-left bg-bg-base/50 p-5 rounded-2xl border border-outline-variant/30" id="welcome-intro-block">
-            <p className="text-xs text-text-high leading-relaxed">
-              Utilize sua Conta do Google para salvar, acessar e sincronizar seus dados.
+          <div className="text-xs text-text-high leading-relaxed space-y-4 bg-bg-base/50 p-6 rounded-2xl border border-outline-variant/30">
+            <p className="font-semibold text-brand-primary uppercase tracking-wider text-[10px]">Passo 1: Crie a Tabela no SQL Editor do Supabase</p>
+            <p className="text-text-muted">
+              Abra seu painel do Supabase, vá em <strong>SQL Editor</strong>, crie uma nova query e execute o comando abaixo para criar a tabela de dados do Nocturne:
             </p>
+            <pre className="p-3 bg-zinc-950 rounded-xl border border-white/5 font-mono text-[10px] text-emerald-400 overflow-x-auto select-all max-h-40 overflow-y-auto">
+{`create table if not exists public.nocturne_data (
+  user_id uuid references auth.users on delete cascade primary key,
+  data jsonb not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Habilitar RLS
+alter table public.nocturne_data enable row level security;
+
+-- Criar políticas
+create policy "Users can read own data" on public.nocturne_data
+  for select using (auth.uid() = user_id);
+
+create policy "Users can insert own data" on public.nocturne_data
+  for insert with check (auth.uid() = user_id);
+
+create policy "Users can update own data" on public.nocturne_data
+  for update using (auth.uid() = user_id);`}
+            </pre>
+
+            <p className="font-semibold text-brand-primary uppercase tracking-wider text-[10px] pt-2">Passo 2: Defina as Variáveis de Ambiente no AI Studio</p>
+            <p className="text-text-muted">
+              Adicione as seguintes chaves nas <strong>Configurações de Segredos (Secrets)</strong> do AI Studio:
+            </p>
+            <ul className="list-disc list-inside space-y-1 pl-1 text-text-high">
+              <li><code className="bg-white/5 px-1.5 py-0.5 rounded text-brand-primary font-mono font-bold">VITE_SUPABASE_URL</code>: A URL do seu projeto Supabase.</li>
+              <li><code className="bg-white/5 px-1.5 py-0.5 rounded text-brand-primary font-mono font-bold">VITE_SUPABASE_ANON_KEY</code>: A chave anônima (anon/public key).</li>
+            </ul>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!firebaseUser) {
+    return (
+      <div className="min-h-screen bg-bg-base flex flex-col items-center justify-center p-6 select-none" id="welcome-login-screen">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="max-w-md w-full bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-8 shadow-2xl space-y-6 relative overflow-hidden text-left"
+          id="welcome-card"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-brand-primary/10 to-transparent rounded-bl-full pointer-events-none" />
+          
+          <div className="flex flex-col items-center text-center space-y-3" id="welcome-brand">
+            <img 
+              src="/favicon.jpg" 
+              alt="Nocturne Logo" 
+              className="w-12 h-12 rounded-2xl shadow-md border border-brand-primary/30 object-cover"
+              referrerPolicy="no-referrer"
+              id="brand-emblem-img"
+            />
+            <span className="text-[10px] text-brand-primary font-mono tracking-widest font-black uppercase">
+              Supabase Cloud
+            </span>
+            <h1 className="text-3xl font-display font-black text-white tracking-tight">
+              Nocturne
+            </h1>
           </div>
 
-          <div className="space-y-4" id="welcome-action-buttons">
+          <div className="flex bg-zinc-950 p-1.5 rounded-xl border border-white/5 mb-2">
             <button
               type="button"
-              onClick={handleGoogleSignIn}
-              className="w-full bg-brand-primary hover:bg-brand-primary/95 border border-brand-primary/20 text-black font-extrabold uppercase text-[10px] tracking-widest py-4 rounded-2xl transition-all cursor-pointer flex items-center justify-center gap-3 shadow-lg shadow-brand-primary/10"
-              id="btn-login-google"
+              onClick={() => setIsSignUp(false)}
+              className={`flex-1 text-center py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${!isSignUp ? 'bg-brand-primary text-black font-extrabold' : 'text-text-muted hover:text-white'}`}
             >
-              <UserIcon size={14} strokeWidth={3} />
-              <span>Entrar com o Google</span>
+              Entrar
             </button>
-            
-            <p className="text-[9px] text-text-muted leading-normal px-2">
-              Nota: Se a janela do Google não abrir por restrições, <a href="#" onClick={(e) => { e.preventDefault(); window.open(window.location.href, '_blank'); }} className="text-brand-primary underline underline-offset-2 font-semibold">clique aqui para abrir o app em nova aba</a>.
-            </p>
+            <button
+              type="button"
+              onClick={() => setIsSignUp(true)}
+              className={`flex-1 text-center py-2 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer ${isSignUp ? 'bg-brand-primary text-black font-extrabold' : 'text-text-muted hover:text-white'}`}
+            >
+              Cadastrar
+            </button>
           </div>
+
+          <form onSubmit={isSignUp ? handleEmailSignUp : handleEmailSignIn} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-white uppercase tracking-wider pl-1">E-mail</label>
+              <input
+                type="email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="seu@email.com"
+                className="w-full bg-zinc-950 border border-outline-variant/40 rounded-xl px-4 py-3 text-xs text-white placeholder-text-muted/65 focus:border-brand-primary outline-none transition-all"
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-white uppercase tracking-wider pl-1">Senha</label>
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-zinc-950 border border-outline-variant/40 rounded-xl px-4 py-3 text-xs text-white placeholder-text-muted/65 focus:border-brand-primary outline-none transition-all"
+                required
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-brand-primary hover:bg-brand-primary/95 border border-brand-primary/20 text-black font-black uppercase text-[10px] tracking-widest py-3.5 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-brand-primary/10 mt-2"
+            >
+              {isSignUp ? 'Criar Conta' : 'Acessar Conta'}
+            </button>
+          </form>
         </motion.div>
       </div>
     );
@@ -2268,7 +2681,6 @@ export default function App() {
             />
             <div>
               <h1 className="text-sm font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
-              <p className="text-[9px] text-text-muted uppercase tracking-widest font-semibold">CONTROLE FINANCEIRO</p>
             </div>
           </div>
 
@@ -2441,8 +2853,8 @@ export default function App() {
                       }`}
                       id="btn-sidebar-missoes"
                     >
-                      <Plane size={14} />
-                      <span>MISSÕES</span>
+                      <History size={14} />
+                      <span>HISTÓRICO</span>
                     </button>
 
                     <button
@@ -2461,28 +2873,79 @@ export default function App() {
                       <ListOrdered size={14} />
                       <span>ME4</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('escala');
+                        setActiveModule('fab');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'escala'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-escala"
+                    >
+                      <CalendarDays size={14} />
+                      <span>ESCALA</span>
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
             {/* FUEL MODULE */}
-            <button
-              type="button"
-              onClick={() => {
-                setActiveScreen('fuel');
-                setActiveModule('fuel');
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
-                activeModule === 'fuel'
-                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
-              }`}
-              id="btn-sidebar-module-fuel"
-            >
-              <Fuel size={16} />
-              <span>FUEL</span>
-            </button>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFuelExpanded(!isFuelExpanded);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                  activeModule === 'fuel'
+                    ? 'bg-brand-primary/10 text-brand-primary border-brand-primary/10'
+                    : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
+                }`}
+                id="btn-sidebar-module-fuel"
+              >
+                <div className="flex items-center gap-3">
+                  <Fuel size={16} />
+                  <span>FUEL</span>
+                </div>
+                {isFuelExpanded ? <ChevronUp size={14} className="text-text-muted" /> : <ChevronDown size={14} className="text-text-muted" />}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {isFuelExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden pl-4 space-y-1"
+                    id="fuel-submenu-container"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('fuel');
+                        setActiveModule('fuel');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'fuel'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-biz"
+                    >
+                      <Motorbike size={14} />
+                      <span>BIZ</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* GAMES MODULE */}
             <button
@@ -2564,7 +3027,6 @@ export default function App() {
                   <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded font-semibold uppercase tracking-wider">Offline</span>
                 )}
               </div>
-              <p className="text-[10px] text-text-muted uppercase tracking-widest font-semibold">CONTROLE FINANCEIRO</p>
             </div>
           </div>
 
@@ -2588,126 +3050,166 @@ export default function App() {
               )}
             </button>
           )}
+
+          {activeScreen === 'missoes' && (
+            <button
+              type="button"
+              onClick={() => setHistoricoIsAfastamentosView(prev => !prev)}
+              className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 px-3 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+              id="btn-historico-toggle-afastamentos-mobile"
+            >
+              {historicoIsAfastamentosView ? (
+                <>
+                  <ArrowLeft size={12} strokeWidth={2.5} />
+                  <span>VOLTAR</span>
+                </>
+              ) : (
+                <>
+                  <Plane size={12} strokeWidth={2.5} />
+                  <span>AFASTAMENTOS</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
-        <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
-          {/* Left section: Title */}
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-black uppercase tracking-wider text-white font-display flex items-center gap-2.5">
-              <span>
-                {activeScreen === 'budget' && 'BUDGET'}
-                {activeScreen === 'contas' && 'CONTAS'}
-                {activeScreen === 'plan' && 'PLANEJAMENTO MENSAL'}
-                {activeScreen === 'temp' && 'TEMP'}
-                {activeScreen === 'config' && 'SYSTEM'}
-                {activeScreen === 'fab' && 'WORK'}
-                {activeScreen === 'contracheque' && 'CONTRACHEQUE'}
-                {activeScreen === 'missoes' && 'MISSÕES'}
-                {activeScreen === 'me4' && 'ME4'}
-                {activeScreen === 'fuel' && 'FUEL'}
-                {activeScreen === 'games' && 'GAMES'}
-              </span>
-              {isOffline && (
-                <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded-lg font-semibold uppercase tracking-wider">Modo Offline</span>
-              )}
-            </h2>
-          </div>
-
-          {/* Center section: Month Navigation and Search centered */}
-          {(activeScreen === 'contracheque' || activeScreen === 'plan') && (
-            <div className="flex-1 flex items-center justify-center gap-3 select-none">
-              {/* Month Navigation on the LEFT of search */}
-              <div className="flex items-center bg-bg-surface-low border border-outline-variant/30 rounded-xl p-1 gap-1">
-                <button
-                  onClick={activeScreen === 'contracheque' ? handleContrachequePrevMonth : handlePlanPrevMonth}
-                  className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
-                  title="Mês anterior"
-                  id={`btn-${activeScreen}-prev-month-header`}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <div className="w-[1px] h-4 bg-outline-variant/20" />
-                <button
-                  onClick={activeScreen === 'contracheque' ? handleContrachequeNextMonth : handlePlanNextMonth}
-                  className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
-                  title="Próximo mês"
-                  id={`btn-${activeScreen}-next-month-header`}
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-
-              {/* Search box MM/AAAA */}
-              <div className="relative max-w-[140px] w-full" id={`${activeScreen}-search-header-container`}>
-                <input
-                  type="text"
-                  placeholder="MM/AAAA"
-                  value={activeScreen === 'contracheque' ? contrachequeSearchQuery : planSearchQuery}
-                  onChange={e => activeScreen === 'contracheque' ? handleContrachequeSearchChange(e.target.value) : handlePlanSearchChange(e.target.value)}
-                  className="bg-bg-surface-low border border-outline-variant/50 rounded-xl pl-8 pr-3 py-2 text-xs font-bold text-white placeholder:text-text-muted/60 focus:outline-none focus:border-brand-primary w-full text-center tracking-widest font-mono"
-                  maxLength={7}
-                  id={`input-${activeScreen}-search-header`}
-                />
-                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-              </div>
-            </div>
-          )}
-          
-          {/* Right section */}
-          <div className="flex-1 flex justify-end items-center gap-4 select-none">
-            {activeScreen === 'fuel' ? (
-              <button
-                type="button"
-                onClick={() => setFuelSubView(prev => prev === 'list' ? 'analysis' : 'list')}
-                className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                id="btn-fuel-toggle-analysis"
-              >
-                {fuelSubView === 'list' ? (
-                  <>
-                    <TrendingUp size={14} strokeWidth={2.5} />
-                    <span>ANÁLISE</span>
-                  </>
-                ) : (
-                  <>
-                    <ArrowLeft size={14} strokeWidth={2.5} />
-                    <span>VOLTAR</span>
-                  </>
+        {activeScreen !== 'me4' && activeScreen !== 'notes' && (
+          <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
+            {/* Left section: Title */}
+            <div className="flex-1 min-w-0">
+              <h2 className="text-xl font-black uppercase tracking-wider text-white font-display flex items-center gap-2.5">
+                <span>
+                  {activeScreen === 'budget' && 'BUDGET'}
+                  {activeScreen === 'contas' && 'CONTAS'}
+                  {activeScreen === 'plan' && 'PLANEJAMENTO MENSAL'}
+                  {activeScreen === 'temp' && 'TEMP'}
+                  {activeScreen === 'config' && 'SYSTEM'}
+                  {activeScreen === 'notes' && 'SYSTEM / NOTES'}
+                  {activeScreen === 'fab' && 'WORK'}
+                  {activeScreen === 'contracheque' && 'CONTRACHEQUE'}
+                  {activeScreen === 'missoes' && 'HISTÓRICO'}
+                  {activeScreen === 'fuel' && 'FUEL'}
+                  {activeScreen === 'games' && 'GAMES'}
+                  {activeScreen === 'escala' && 'ESCALA'}
+                </span>
+                {isOffline && (
+                  <span className="px-2 py-0.5 text-[10px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded-lg font-semibold uppercase tracking-wider">Modo Offline</span>
                 )}
-              </button>
-            ) : activeScreen === 'config' ? null : activeScreen === 'contracheque' ? (
-              <div className="flex items-center gap-3">
-                {/* Resumo button on the LEFT of the Total Recebido information */}
-                <button
-                  onClick={() => setContrachequeIsResumoView(prev => !prev)}
-                  className={`flex items-center gap-2 py-2 px-4 border rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-sm ${
-                    contrachequeIsResumoView
-                      ? 'bg-brand-primary text-black border-brand-primary hover:bg-brand-primary/80'
-                      : 'bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary border-brand-primary/20'
-                  }`}
-                  id="btn-contracheque-resumo-desktop-top"
-                >
-                  <FileText size={14} />
-                  <span>Resumo</span>
-                </button>
+              </h2>
+            </div>
 
-                <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
-                  <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Total Recebido</span>
-                  <span className="text-sm font-bold text-brand-primary font-mono">
-                    R$ {contrachequeTotalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+            {/* Center section: Month Navigation and Search centered */}
+            {(activeScreen === 'contracheque' || activeScreen === 'plan') && (
+              <div className="flex-1 flex items-center justify-center gap-3 select-none">
+                {/* Month Navigation on the LEFT of search */}
+                <div className="flex items-center bg-bg-surface-low border border-outline-variant/30 rounded-xl p-1 gap-1">
+                  <button
+                    onClick={activeScreen === 'contracheque' ? handleContrachequePrevMonth : handlePlanPrevMonth}
+                    className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
+                    title="Mês anterior"
+                    id={`btn-${activeScreen}-prev-month-header`}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <div className="w-[1px] h-4 bg-outline-variant/20" />
+                  <button
+                    onClick={activeScreen === 'contracheque' ? handleContrachequeNextMonth : handlePlanNextMonth}
+                    className="p-1.5 text-text-muted hover:text-white hover:bg-white/5 active:bg-white/10 rounded-lg transition-all cursor-pointer"
+                    title="Próximo mês"
+                    id={`btn-${activeScreen}-next-month-header`}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                {/* Search box MM/AAAA */}
+                <div className="relative max-w-[140px] w-full" id={`${activeScreen}-search-header-container`}>
+                  <input
+                    type="text"
+                    placeholder="MM/AAAA"
+                    value={activeScreen === 'contracheque' ? contrachequeSearchQuery : planSearchQuery}
+                    onChange={e => activeScreen === 'contracheque' ? handleContrachequeSearchChange(e.target.value) : handlePlanSearchChange(e.target.value)}
+                    className="bg-bg-surface-low border border-outline-variant/50 rounded-xl pl-8 pr-3 py-2 text-xs font-bold text-white placeholder:text-text-muted/60 focus:outline-none focus:border-brand-primary w-full text-center tracking-widest font-mono"
+                    maxLength={7}
+                    id={`input-${activeScreen}-search-header`}
+                  />
+                  <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                 </div>
               </div>
-            ) : (
-              <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
-                <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
-                <span className="text-sm font-bold text-brand-primary font-mono">
-                  R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                </span>
-              </div>
             )}
+            
+            {/* Right section */}
+            <div className="flex-1 flex justify-end items-center gap-4 select-none">
+              {activeScreen === 'fuel' ? (
+                <button
+                  type="button"
+                  onClick={() => setFuelSubView(prev => prev === 'list' ? 'analysis' : 'list')}
+                  className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  id="btn-fuel-toggle-analysis"
+                >
+                  {fuelSubView === 'list' ? (
+                    <>
+                      <TrendingUp size={14} strokeWidth={2.5} />
+                      <span>ANÁLISE</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowLeft size={14} strokeWidth={2.5} />
+                      <span>VOLTAR</span>
+                    </>
+                  )}
+                </button>
+              ) : activeScreen === 'config' ? null : activeScreen === 'contracheque' ? (
+                <div className="flex items-center gap-3">
+                  {/* Resumo button on the LEFT of the Total Recebido information */}
+                  <button
+                    onClick={() => setContrachequeIsResumoView(prev => !prev)}
+                    className={`flex items-center gap-2 py-2 px-4 border rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-sm ${
+                      contrachequeIsResumoView
+                        ? 'bg-brand-primary text-black border-brand-primary hover:bg-brand-primary/80'
+                        : 'bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary border-brand-primary/20'
+                    }`}
+                    id="btn-contracheque-resumo-desktop-top"
+                  >
+                    <FileText size={14} />
+                    <span>Resumo</span>
+                  </button>
+
+                  <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
+                    <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Total Recebido</span>
+                    <span className="text-sm font-bold text-brand-primary font-mono">
+                      R$ {contrachequeTotalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              ) : activeScreen === 'missoes' ? (
+                <div className="flex items-center gap-3">
+                  {/* AFASTAMENTOS button instead of Resumo */}
+                  <button
+                    onClick={() => setHistoricoIsAfastamentosView(prev => !prev)}
+                    className={`flex items-center gap-2 py-2 px-4 border rounded-xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-sm ${
+                      historicoIsAfastamentosView
+                        ? 'bg-brand-primary text-black border-brand-primary hover:bg-brand-primary/80'
+                        : 'bg-brand-primary/15 hover:bg-brand-primary/25 text-brand-primary border-brand-primary/20'
+                    }`}
+                    id="btn-historico-afastamentos-desktop-top"
+                  >
+                    <Plane size={14} />
+                    <span>AFASTAMENTOS</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
+                  <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
+                  <span className="text-sm font-bold text-brand-primary font-mono">
+                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {activeScreen === 'budget' && (
           <>
@@ -3579,6 +4081,39 @@ export default function App() {
               </div>
             </div>
 
+            {/* Tools Card */}
+            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4 shadow-lg" id="config-tools-box">
+              <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
+                <span className="text-xs font-black text-white uppercase tracking-wider">Tools</span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3" id="tools-buttons">
+                <button
+                  onClick={() => {
+                    setActiveScreen('notes');
+                  }}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
+                  id="btn-tool-notes"
+                >
+                  <ScrollText className="text-brand-primary" size={20} />
+                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Notes</span>
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={() => {
+                    // "O botão THE LIST por enquanto não vai fazer nada."
+                  }}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
+                  id="btn-tool-thelist"
+                >
+                  <Flame className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
+                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">The List</span>
+                </button>
+              </div>
+            </div>
+
             {/* Tema (Aparência) */}
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-appearance-box">
               <div className="flex items-center gap-2">
@@ -3689,7 +4224,7 @@ export default function App() {
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Work</span>
                   </div>
-                  <span className="text-white font-bold">v2.0.0</span>
+                  <span className="text-white font-bold">v2.0.2</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
@@ -3708,7 +4243,7 @@ export default function App() {
               </ul>
 
               <div className="text-center pt-3 border-t border-outline-variant/10 text-[11px] font-bold text-brand-primary select-none font-mono" id="system-info-developer-text">
-                2026 - v2.0.0 - Desenvolvido por Armindo Neto
+                2026 - v2.1.3 - Desenvolvido por Armindo Neto
               </div>
             </div>
           </motion.div>
@@ -3736,24 +4271,22 @@ export default function App() {
           </motion.div>
         )}
 
-        {/* WORK SCREENS: MISSÕES */}
+        {/* WORK SCREENS: HISTÓRICO */}
         {activeScreen === 'missoes' && (
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center"
+            className="flex flex-col h-full overflow-hidden"
             id="missoes-screen-view"
           >
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
-              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
-                <Plane size={32} className="text-brand-primary animate-pulse" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MISSÕES</h3>
-                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
-                <p className="text-xs text-text-muted">Acompanhe suas missões, deslocamentos e diárias diretamente por aqui em breve.</p>
-              </div>
-            </div>
+            <HistoricoScreen
+              historicoEntries={historicoEntries}
+              setHistoricoEntries={setHistoricoEntries}
+              triggerToast={triggerToast}
+              contrachequeTotalNet={contrachequeTotalNet}
+              isAfastamentosView={historicoIsAfastamentosView}
+              setIsAfastamentosView={setHistoricoIsAfastamentosView}
+            />
           </motion.div>
         )}
 
@@ -3762,17 +4295,35 @@ export default function App() {
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center"
+            className="w-full"
             id="me4-screen-view"
+          >
+            <ME4Screen 
+              exclusions={me4Exclusions} 
+              setExclusions={setMe4Exclusions} 
+              highlights={me4Highlights} 
+              setHighlights={setMe4Highlights} 
+              theme={theme}
+            />
+          </motion.div>
+        )}
+
+        {/* WORK SCREENS: ESCALA */}
+        {activeScreen === 'escala' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+            id="escala-screen-view"
           >
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
               <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
-                <ListOrdered size={32} className="text-brand-primary animate-pulse" />
+                <CalendarDays size={32} className="text-brand-primary animate-pulse" />
               </div>
               <div className="space-y-2">
-                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">ME4</h3>
-                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
-                <p className="text-xs text-text-muted">Acesse seu histórico, registros e boletins ME4 de forma simplificada em breve.</p>
+                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MÓDULO ESCALA</h3>
+                <p className="text-sm font-semibold text-text-high">Menu em desenvolvimento.</p>
+                <p className="text-xs text-text-muted">Em breve você terá acesso a todas as funcionalidades deste espaço.</p>
               </div>
             </div>
           </motion.div>
@@ -4733,6 +5284,35 @@ export default function App() {
           </motion.div>
         )}
 
+        {/* NOTES SCREEN */}
+        {activeScreen === 'notes' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col space-y-6 text-left"
+            id="notes-screen-view"
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveScreen('config');
+                }}
+                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
+                id="btn-back-to-config"
+              >
+                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
+              </button>
+            </div>
+
+            <NotesScreen 
+              notes={notes} 
+              setNotes={setNotes} 
+              theme={theme}
+            />
+          </motion.div>
+        )}
+
         </div>
       </main>
 
@@ -4834,8 +5414,8 @@ export default function App() {
               className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'missoes' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
               id="btn-subnav-missoes"
             >
-              <Plane size={16} />
-              <span className="text-[9px] font-black tracking-widest uppercase font-display">MISSÕES</span>
+              <History size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">HISTÓRICO</span>
             </button>
 
             <button
@@ -4849,6 +5429,45 @@ export default function App() {
             >
               <ListOrdered size={16} />
               <span className="text-[9px] font-black tracking-widest uppercase font-display">ME4</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('escala');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'escala' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-escala"
+            >
+              <CalendarDays size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">ESCALA</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile Submenu for FUEL module (only shown when activeModule === 'fuel' and showMobileSubmenu is true on mobile) */}
+      <AnimatePresence>
+        {activeModule === 'fuel' && showMobileSubmenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 15 }}
+            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            id="mobile-fuel-subnav"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('fuel');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'fuel' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-biz"
+            >
+              <Motorbike size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">BIZ</span>
             </button>
           </motion.div>
         )}
@@ -4896,9 +5515,12 @@ export default function App() {
         <button
           type="button"
           onClick={() => {
-            setActiveModule('fuel');
-            setActiveScreen('fuel');
-            setShowMobileSubmenu(false);
+            if (activeModule === 'fuel') {
+              setShowMobileSubmenu(prev => !prev);
+            } else {
+              setActiveModule('fuel');
+              setShowMobileSubmenu(true);
+            }
           }}
           className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'fuel' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-fuel"

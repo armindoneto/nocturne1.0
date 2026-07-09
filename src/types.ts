@@ -114,5 +114,30 @@ export interface ContrachequeEntry {
   isAtrasado?: boolean;
 }
 
+export interface HistoricoEntry {
+  id: string;
+  category: 'CURSOS' | 'INSTRUÇÃO' | 'MISSÕES';
+  name: string;
+  location: string;
+  startDate: string; // DD/MM/AA
+  endDate: string; // DD/MM/AA
+  travelDays: number; // DIAS DE DESLOCAMENTO
+  isAbsence?: boolean; // Contar como afastamento
+}
+
+export interface ME4Exclusion {
+  nrOrd: string;
+  reason: string;
+  timestamp: string;
+}
+
+export interface AppNote {
+  id: string;
+  text: string;
+  createdAt: string; // ISO date string or formatted date string
+}
+
+
+
 
 
