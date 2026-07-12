@@ -9,6 +9,7 @@ import {
   Utensils,
   ShoppingBag,
   TrendingUp,
+  TrendingDown,
   Fuel,
   Tv,
   HeartPulse,
@@ -57,10 +58,11 @@ import {
   X,
   Motorbike,
   ScrollText,
-  CalendarDays
+  CalendarDays,
+  BookLock
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion } from './types';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 export interface AppUser {
@@ -84,6 +86,8 @@ import ContrachequeScreen from './components/ContrachequeScreen';
 import HistoricoScreen from './components/HistoricoScreen';
 import ME4Screen from './components/ME4Screen';
 import NotesScreen from './components/NotesScreen';
+import EscalaScreen from './components/EscalaScreen';
+import TheListScreen from './components/TheListScreen';
 import { AppNote } from './types';
 
 export const ACCOUNT_COLORS = [
@@ -352,9 +356,10 @@ export default function App() {
 
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
+  const [isAnalysisView, setIsAnalysisView] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist'>('budget');
   const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'system'>('finance');
   const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
   const [isWorkExpanded, setIsWorkExpanded] = useState(false);
@@ -472,6 +477,7 @@ export default function App() {
     return [];
   });
   const [isPatrimonyModalOpen, setIsPatrimonyModalOpen] = useState(false);
+  const [isPatrimonyHistoryView, setIsPatrimonyHistoryView] = useState(false);
   const [showAddPatrimonyForm, setShowAddPatrimonyForm] = useState(false);
   const [newPatrimonyMonthYear, setNewPatrimonyMonthYear] = useState('');
   const [newPatrimonyAmount, setNewPatrimonyAmount] = useState('');
@@ -595,6 +601,49 @@ export default function App() {
     if (saved) {
       try {
         return JSON.parse(saved) as AppNote[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  // --- The List States ---
+  const [theListEntries, setTheListEntries] = useState<TheListEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_thelist_entries');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as TheListEntry[];
+      } catch (_) {}
+    }
+    return [];
+  });
+  const [theListYearCounts, setTheListYearCounts] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('nocturne_thelist_year_counts');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as Record<string, number>;
+      } catch (_) {}
+    }
+    return {};
+  });
+  const [isTheListPasswordModalOpen, setIsTheListPasswordModalOpen] = useState(false);
+  const [theListPasswordInput, setTheListPasswordInput] = useState('');
+
+  // --- Escala States ---
+  const [escalaTurnos, setEscalaTurnos] = useState<EscalaTurno[]>(() => {
+    const saved = localStorage.getItem('nocturne_escala_turnos');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as EscalaTurno[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  const [escalaDays, setEscalaDays] = useState<EscalaDay[]>(() => {
+    const saved = localStorage.getItem('nocturne_escala_days');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as EscalaDay[];
       } catch (_) {}
     }
     return [];
@@ -756,6 +805,22 @@ export default function App() {
   }, [notes]);
 
   useEffect(() => {
+    localStorage.setItem('nocturne_thelist_entries', JSON.stringify(theListEntries));
+  }, [theListEntries]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_thelist_year_counts', JSON.stringify(theListYearCounts));
+  }, [theListYearCounts]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_escala_turnos', JSON.stringify(escalaTurnos));
+  }, [escalaTurnos]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_escala_days', JSON.stringify(escalaDays));
+  }, [escalaDays]);
+
+  useEffect(() => {
     localStorage.setItem('nocturne_last_maintenance', JSON.stringify(lastMaintenance));
   }, [lastMaintenance]);
 
@@ -871,7 +936,7 @@ export default function App() {
           setIsOffline(false);
 
           if (fetchErr) {
-            console.error("Supabase fetch failed:", fetchErr);
+            console.warn("Supabase fetch failed (falling back to offline/local):", fetchErr);
             setFirestoreWriteError(`Falha ao carregar dados do Supabase: ${fetchErr.message}`);
             setIsOffline(true);
             setDataLoadedFromFirestore(true);
@@ -907,6 +972,10 @@ export default function App() {
               planIncomes,
               planCards,
               activePlanMonth,
+              escalaTurnos,
+              escalaDays,
+              theListEntries,
+              theListYearCounts,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
@@ -920,7 +989,7 @@ export default function App() {
               });
 
             if (insertErr) {
-              console.error("Supabase insert failed:", insertErr);
+              console.warn("Supabase insert failed (using local storage):", insertErr);
               setFirestoreWriteError(`Falha ao inicializar dados na nuvem: ${insertErr.message}`);
             } else {
               setFirestoreWriteError(null);
@@ -1008,11 +1077,23 @@ export default function App() {
             if (data.notes !== undefined) {
               setNotes(data.notes);
             }
+            if (data.escalaTurnos !== undefined) {
+              setEscalaTurnos(data.escalaTurnos);
+            }
+            if (data.escalaDays !== undefined) {
+              setEscalaDays(data.escalaDays);
+            }
+            if (data.theListEntries !== undefined) {
+              setTheListEntries(data.theListEntries);
+            }
+            if (data.theListYearCounts !== undefined) {
+              setTheListYearCounts(data.theListYearCounts);
+            }
             setFirestoreWriteError(null);
           }
           setDataLoadedFromFirestore(true);
         } catch (err: any) {
-          console.error('Error fetching Supabase data:', err);
+          console.warn('Error fetching Supabase data (using local storage):', err);
           setFirestoreWriteError(`Falha ao sincronizar dados com o Supabase: ${err.message}`);
           setIsOffline(true);
           setDataLoadedFromFirestore(true);
@@ -1115,6 +1196,10 @@ export default function App() {
           planIncomes,
           planCards,
           activePlanMonth,
+          escalaTurnos,
+          escalaDays,
+          theListEntries,
+          theListYearCounts,
           didClearLegacyCards_v8: true,
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
@@ -1130,7 +1215,7 @@ export default function App() {
           });
 
         if (saveErr) {
-          console.error("Supabase upsert failed:", saveErr);
+          console.warn("Supabase upsert failed (retaining offline copy):", saveErr);
           setFirestoreWriteError(`Falha ao salvar dados na nuvem: ${saveErr.message}`);
           setIsOffline(true);
         } else {
@@ -1139,7 +1224,7 @@ export default function App() {
           setCloudLastSynced(nowStr);
         }
       } catch (err: any) {
-        console.error('Error saving data to Supabase:', err);
+        console.warn('Error saving data to Supabase (using local fallback):', err);
         setFirestoreWriteError(`Erro ao conectar ao Supabase: ${err.message}`);
       } finally {
         setSaveLoading(false);
@@ -1171,7 +1256,11 @@ export default function App() {
     me4Exclusions,
     me4Highlights,
     notes,
-    activePlanMonth
+    activePlanMonth,
+    escalaTurnos,
+    escalaDays,
+    theListEntries,
+    theListYearCounts
   ]);
 
   // One-time automatic migration to clean up duplicate cards in Firebase / LocalStorage
@@ -1320,6 +1409,10 @@ export default function App() {
           planIncomes,
           planCards,
           activePlanMonth,
+          escalaTurnos,
+          escalaDays,
+          theListEntries,
+          theListYearCounts,
           didClearLegacyCards_v8: true,
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
@@ -1357,6 +1450,8 @@ export default function App() {
       setTempCategories([]);
       setMe4Exclusions([]);
       setMe4Highlights([]);
+      setTheListEntries([]);
+      setTheListYearCounts({});
       setPatrimonyHistory([
         { id: 'pe-1', monthYear: '02/2026', amount: 48000.00 },
         { id: 'pe-2', monthYear: '03/2026', amount: 52500.00 },
@@ -2138,7 +2233,11 @@ export default function App() {
         'nocturne_historico_entries',
         'nocturne_me4_exclusions',
         'nocturne_me4_highlights',
-        'nocturne_notes'
+        'nocturne_notes',
+        'nocturne_escala_turnos',
+        'nocturne_escala_days',
+        'nocturne_thelist_entries',
+        'nocturne_thelist_year_counts'
       ];
       
       keysToBackup.forEach(key => {
@@ -2193,7 +2292,11 @@ export default function App() {
           'nocturne_historico_entries',
           'nocturne_me4_exclusions',
           'nocturne_me4_highlights',
-          'nocturne_notes'
+          'nocturne_notes',
+          'nocturne_escala_turnos',
+          'nocturne_escala_days',
+          'nocturne_thelist_entries',
+          'nocturne_thelist_year_counts'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -2247,6 +2350,10 @@ export default function App() {
         if (backupData['nocturne_me4_exclusions']) setMe4Exclusions(JSON.parse(backupData['nocturne_me4_exclusions']!));
         if (backupData['nocturne_me4_highlights']) setMe4Highlights(JSON.parse(backupData['nocturne_me4_highlights']!));
         if (backupData['nocturne_notes']) setNotes(JSON.parse(backupData['nocturne_notes']!));
+        if (backupData['nocturne_escala_turnos']) setEscalaTurnos(JSON.parse(backupData['nocturne_escala_turnos']!));
+        if (backupData['nocturne_escala_days']) setEscalaDays(JSON.parse(backupData['nocturne_escala_days']!));
+        if (backupData['nocturne_thelist_entries']) setTheListEntries(JSON.parse(backupData['nocturne_thelist_entries']!));
+        if (backupData['nocturne_thelist_year_counts']) setTheListYearCounts(JSON.parse(backupData['nocturne_thelist_year_counts']!));
         
         if (firebaseUser && firebaseUser.uid !== 'local-user') {
           setDataLoadedFromFirestore(true);
@@ -2277,7 +2384,11 @@ export default function App() {
             const parsedMe4Exclusions = backupData['nocturne_me4_exclusions'] ? JSON.parse(backupData['nocturne_me4_exclusions']!) : me4Exclusions;
             const parsedMe4Highlights = backupData['nocturne_me4_highlights'] ? JSON.parse(backupData['nocturne_me4_highlights']!) : me4Highlights;
             const parsedNotes = backupData['nocturne_notes'] ? JSON.parse(backupData['nocturne_notes']!) : notes;
-
+            const parsedEscalaTurnos = backupData['nocturne_escala_turnos'] ? JSON.parse(backupData['nocturne_escala_turnos']!) : escalaTurnos;
+            const parsedEscalaDays = backupData['nocturne_escala_days'] ? JSON.parse(backupData['nocturne_escala_days']!) : escalaDays;
+            const parsedTheListEntries = backupData['nocturne_thelist_entries'] ? JSON.parse(backupData['nocturne_thelist_entries']!) : theListEntries;
+            const parsedTheListYearCounts = backupData['nocturne_thelist_year_counts'] ? JSON.parse(backupData['nocturne_thelist_year_counts']!) : theListYearCounts;
+ 
             const dataToSave = {
               user: parsedUser,
               accounts: parsedAccounts,
@@ -2301,6 +2412,10 @@ export default function App() {
               planIncomes: parsedPlanIncomes,
               planCards: parsedPlanCards,
               activePlanMonth: activePlanMonth,
+              escalaTurnos: parsedEscalaTurnos,
+              escalaDays: parsedEscalaDays,
+              theListEntries: parsedTheListEntries,
+              theListYearCounts: parsedTheListYearCounts,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
@@ -2316,7 +2431,7 @@ export default function App() {
               })
               .then(({ error: saveErr }) => {
                 if (saveErr) {
-                  console.error("Immediate Supabase upsert failed:", saveErr);
+                  console.warn("Immediate Supabase upsert failed (imported locally):", saveErr);
                   triggerToast(`Erro ao salvar importação na nuvem: ${saveErr.message}`);
                 } else {
                   setCloudLastSynced(nowStr);
@@ -2379,6 +2494,10 @@ export default function App() {
         planIncomes,
         planCards,
         activePlanMonth,
+        escalaTurnos,
+        escalaDays,
+        theListEntries,
+        theListYearCounts,
         didClearLegacyCards_v8: true,
         didClearLegacyCards_v9: true,
         didClearLegacyCards_v10: true
@@ -2394,7 +2513,7 @@ export default function App() {
         });
 
       if (saveErr) {
-        console.error("Supabase manual upsert failed:", saveErr);
+        console.warn("Supabase manual upsert failed (using local sync):", saveErr);
         triggerToast(`Erro ao sincronizar: ${saveErr.message}`);
       } else {
         triggerToast('Sincronizado com a nuvem com sucesso!');
@@ -2403,7 +2522,7 @@ export default function App() {
         setFirestoreWriteError(null);
       }
     } catch (err: any) {
-      console.error('Error in manual sync:', err);
+      console.warn('Error in manual sync:', err);
       triggerToast(`Erro ao sincronizar: ${err.message || err}`);
     } finally {
       setSaveLoading(false);
@@ -2724,6 +2843,7 @@ create policy "Users can update own data" on public.nocturne_data
                         setActiveScreen('budget');
                         setActiveTab('transacoes');
                         setActiveModule('finance');
+                        setIsAnalysisView(false);
                       }}
                       className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                         activeScreen === 'budget'
@@ -2741,6 +2861,7 @@ create policy "Users can update own data" on public.nocturne_data
                       onClick={() => {
                         setActiveScreen('contas');
                         setActiveModule('finance');
+                        setIsPatrimonyHistoryView(false);
                       }}
                       className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
                         activeScreen === 'contas'
@@ -3074,7 +3195,7 @@ create policy "Users can update own data" on public.nocturne_data
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
-        {activeScreen !== 'me4' && activeScreen !== 'notes' && (
+        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'escala' && activeScreen !== 'thelist' && (
           <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
             {/* Left section: Title */}
             <div className="flex-1 min-w-0">
@@ -3213,7 +3334,180 @@ create policy "Users can update own data" on public.nocturne_data
 
         {activeScreen === 'budget' && (
           <>
-            {/* TAB 1: INÍCIO (DASHBOARD) */}
+            {isAnalysisView ? (
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex flex-col h-full space-y-6"
+                id="budget-analysis-page-view"
+              >
+                {/* PAGE-STYLE RENDERING FOR ANÁLISE */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-outline-variant/15 pb-4" id="budget-analysis-header">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setIsAnalysisView(false)}
+                      className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all cursor-pointer flex items-center justify-center"
+                      title="Voltar para orçamento"
+                      id="btn-analysis-back-top"
+                    >
+                      <ArrowLeft size={16} />
+                    </button>
+                    <div>
+                      <h2 className="text-lg font-black tracking-wider text-white uppercase font-display flex items-center gap-2">
+                        <TrendingUp size={18} className="text-amber-500" strokeWidth={2.5} />
+                        Análise de Saldo Geral
+                      </h2>
+                    </div>
+                  </div>
+                </div>
+
+                {!periodActive ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-12 text-center space-y-3 bg-bg-surface-low border border-outline-variant/40 rounded-2xl p-6">
+                    <span className="text-4xl">📊</span>
+                    <h4 className="text-sm font-bold text-white">Nenhum período ativo</h4>
+                    <p className="text-xs text-text-muted max-w-[280px]">
+                      Inicie um período de orçamento primeiro para acompanhar a evolução diária e projeções.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Consolidado metrics like in RESUMO */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" id="analysis-summary-cards">
+                      <div className="bg-bg-surface-low border border-outline-variant/40 rounded-2xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
+                        <div className="absolute right-3 top-3 w-8 h-8 bg-amber-500/5 rounded-lg flex items-center justify-center border border-amber-500/10">
+                          <TrendingUp size={16} className="text-amber-500" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Balanço Projetado</span>
+                          <span className={`text-lg font-black font-mono tracking-tight block mt-1 ${analysisData.projectedBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            R$ {analysisData.projectedBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-bg-surface-low border border-outline-variant/40 rounded-2xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
+                        <div className="absolute right-3 top-3 w-8 h-8 bg-rose-500/5 rounded-lg flex items-center justify-center border border-rose-500/10">
+                          <TrendingDown size={16} className="text-rose-400" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Média Diária</span>
+                          <span className="text-lg font-black font-mono tracking-tight text-rose-400 block mt-1">
+                            R$ {analysisData.averageDailyExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="bg-bg-surface-low border border-outline-variant/40 rounded-2xl p-4 flex flex-col justify-between shadow-sm relative overflow-hidden">
+                        <div className="absolute right-3 top-3 w-8 h-8 bg-white/5 rounded-lg flex items-center justify-center border border-white/10">
+                          <DollarSign size={16} className="text-white/70" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Total de Gastos</span>
+                          <span className="text-lg font-black font-mono tracking-tight text-white block mt-1">
+                            R$ {analysisData.totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Chart & Daily Evolution list inside a grid */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" id="analysis-grid-content">
+                      {/* Left: Recharts Bar Chart */}
+                      <div className="bg-bg-surface-low border border-outline-variant p-5 rounded-2xl space-y-4">
+                        <span className="block text-[11px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">
+                          Evolução do Limite Atribuído
+                        </span>
+                        <div className="w-full h-64">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                              <XAxis 
+                                dataKey="name" 
+                                stroke="#71717a" 
+                                fontSize={10} 
+                                tickLine={false} 
+                                axisLine={false} 
+                                tickMargin={6}
+                              />
+                              <YAxis 
+                                stroke="#71717a" 
+                                fontSize={10} 
+                                tickLine={false} 
+                                axisLine={false} 
+                                tickMargin={6}
+                              />
+                              <Tooltip 
+                                contentStyle={{ 
+                                  backgroundColor: '#111318', 
+                                  borderColor: '#2d3139', 
+                                  borderRadius: '8px',
+                                  fontSize: '11px',
+                                  color: '#ffffff'
+                                }} 
+                                labelClassName="text-text-muted"
+                                formatter={(value: any) => [`R$ ${value}`, 'Limite']}
+                              />
+                              <Bar dataKey="Limite Atribuído" fill="#ffe08b" radius={[4, 4, 0, 0]} barSize={20} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Right: Daily Evolution List */}
+                      <div className="bg-bg-surface-low border border-outline-variant p-5 rounded-2xl flex flex-col h-full max-h-[350px] lg:max-h-[350px]">
+                        <span className="block text-[11px] uppercase tracking-widest text-[#ffe08b] font-bold mb-4 font-mono">
+                          Evolução Diária do Período
+                        </span>
+                        <div className="flex-1 overflow-y-auto pr-1 space-y-3 custom-scrollbar">
+                          {analysisData.daysList.length === 0 ? (
+                            <div className="text-center py-12 text-text-muted text-xs">Nenhum dia decorrido no período atual.</div>
+                          ) : (
+                            analysisData.daysList.map((day) => {
+                              const isPositive = day.dailyNetBalance >= 0;
+                              return (
+                                <div 
+                                  key={day.dayNumber} 
+                                  className="bg-black/25 border border-outline-variant/30 hover:border-outline-variant/60 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
+                                >
+                                  <div>
+                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                      <span className="text-[9px] font-bold uppercase tracking-wider text-brand-primary font-mono bg-brand-primary/10 border border-brand-primary/25 rounded px-1.5 py-0.5">
+                                        Dia {day.dayNumber}
+                                      </span>
+                                      <span className="text-[10px] text-text-muted font-mono">{day.dateFormatted}</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-text-muted font-mono">
+                                      <div>
+                                        Lim. Atribuído:{' '}
+                                        <strong className="text-white font-semibold">R$ {day.dailySaldoAtStart.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                      </div>
+                                      <div>
+                                        Despesas Reais:{' '}
+                                        <strong className="text-white font-semibold">R$ {day.dayExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right flex sm:flex-col items-center justify-between sm:justify-center gap-1 border-t sm:border-t-0 border-white/5 pt-1.5 sm:pt-0">
+                                    <span className="text-[9px] uppercase tracking-widest text-text-muted font-bold font-mono sm:hidden">
+                                      Balanço:
+                                    </span>
+                                    <span className={`font-mono font-black tracking-tight text-xs ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      {isPositive ? '+' : ''} R$ {day.dailyNetBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </motion.div>
+            ) : (
+              <>
+                {/* TAB 1: INÍCIO (DASHBOARD) */}
         {activeTab === 'inicio' && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -3439,7 +3733,7 @@ create policy "Users can update own data" on public.nocturne_data
                     </button>
 
                     <button
-                      onClick={() => setIsAnalysisModalOpen(true)}
+                      onClick={() => setIsAnalysisView(true)}
                       className="inline-flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-500 text-amber-500 text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all duration-250 cursor-pointer shadow-sm w-32 justify-center"
                       id="btn-open-analysis"
                     >
@@ -3725,11 +4019,13 @@ create policy "Users can update own data" on public.nocturne_data
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão v8.1.3 • Nocturne
+                Versão v8.1.4 • Nocturne
               </div>
             </div>
           </motion.div>
         )}
+              </>
+            )}
           </>
         )}
 
@@ -3738,11 +4034,272 @@ create policy "Users can update own data" on public.nocturne_data
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col"
+            className="flex flex-col h-full"
             id="contas-screen-view"
           >
-            {/* Reorganized Layout for Contas with Summary and Button on Top */}
-            <div className="flex flex-col gap-6" id="contas-screen-grid">
+            {isPatrimonyHistoryView ? (
+              <div className="flex flex-col space-y-6" id="patrimony-history-page-view">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-outline-variant/15 pb-4" id="patrimony-page-header">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPatrimonyHistoryView(false);
+                        setNewPatrimonyMonthYear('');
+                        setNewPatrimonyAmount('');
+                      }}
+                      className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-text-muted hover:text-white hover:bg-white/10 transition-all cursor-pointer flex items-center justify-center"
+                      title="Voltar para contas"
+                      id="btn-patrimony-back-top"
+                    >
+                      <ArrowLeft size={16} />
+                    </button>
+                    <div>
+                      <h2 className="text-lg font-black tracking-wider text-white uppercase font-display flex items-center gap-2">
+                        <History className="text-[#ffe08b]" size={18} strokeWidth={2.5} />
+                        Histórico de Patrimônio Consolidado
+                      </h2>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Main page body */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start" id="patrimony-page-grid">
+                  {/* Left Column (2/3 width on desktop): Chart & Add Record Form */}
+                  <div className="lg:col-span-2 space-y-6">
+                    {/* Line Chart */}
+                    <div className="bg-bg-surface-low border border-outline-variant rounded-2xl p-5 shadow-lg relative overflow-hidden" id="patrimony-chart-container">
+                      <span className="block text-[11px] uppercase tracking-widest text-[#ffe08b] font-mono font-bold mb-4">
+                        Evolução do Patrimônio Acumulado (R$)
+                      </span>
+                      <div className="w-full h-64">
+                        {patrimonyHistory.length < 2 ? (
+                          <div className="w-full h-full flex items-center justify-center text-[11px] text-text-muted font-mono bg-white/5 rounded-xl border border-outline-variant/10 text-center px-4">
+                            Adicione pelo menos 2 pontos de dados para exibir a linha de evolução histórica.
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart 
+                              data={[...patrimonyHistory]
+                                .sort((a, b) => {
+                                  const [mA, yA] = a.monthYear.split('/').map(n => parseInt(n, 10));
+                                  const [mB, yB] = b.monthYear.split('/').map(n => parseInt(n, 10));
+                                  const dateA = new Date(yA < 100 ? 2000 + yA : yA, mA - 1, 1);
+                                  const dateB = new Date(yB < 100 ? 2000 + yB : yB, mB - 1, 1);
+                                  return dateA.getTime() - dateB.getTime();
+                                })} 
+                              margin={{ top: 10, right: 15, left: -20, bottom: 5 }}
+                            >
+                              <XAxis 
+                                dataKey="monthYear" 
+                                stroke="#71717a" 
+                                fontSize={10} 
+                                tickLine={false} 
+                                axisLine={false} 
+                                tickMargin={6}
+                              />
+                              <YAxis 
+                                stroke="#71717a" 
+                                fontSize={10} 
+                                tickLine={false} 
+                                axisLine={false} 
+                                tickFormatter={(val) => `R$ ${val >= 1000 ? (val/1000) + 'k' : val}`}
+                                tickMargin={6}
+                              />
+                              <Tooltip 
+                                contentStyle={{ 
+                                  backgroundColor: '#111318', 
+                                  borderColor: '#2d3139', 
+                                  borderRadius: '8px',
+                                  fontSize: '11px',
+                                  color: '#ffffff'
+                                }} 
+                                labelClassName="text-text-muted font-bold"
+                                formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Patrimônio']}
+                              />
+                              <Line 
+                                type="monotone" 
+                                dataKey="amount" 
+                                stroke="#ffe08b" 
+                                strokeWidth={2.5}
+                                activeDot={{ r: 6 }}
+                                dot={false}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Form to insert new records */}
+                    <div className="bg-bg-surface-low border border-outline-variant p-5 rounded-2xl space-y-4">
+                      <h4 className="text-xs uppercase font-extrabold text-[#ffe08b] tracking-wider flex items-center gap-1.5 font-mono">
+                        <Plus size={14} /> Inserir Novo Registro Histórico
+                      </h4>
+                      <form 
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (!newPatrimonyMonthYear || !newPatrimonyAmount) {
+                            triggerToast('Preencha os campos de mês/ano e valor.');
+                            return;
+                          }
+
+                          const dateRegex = /^(0?[1-9]|1[0-2])\/\d{2,4}$/;
+                          if (!dateRegex.test(newPatrimonyMonthYear)) {
+                            triggerToast('Período inválido. Use o formato Mês/Ano (MM/AAAA, ex: 06/2026).');
+                            return;
+                          }
+
+                          const cleanedVal = newPatrimonyAmount.replace(/\s/g, '').replace('R$', '').replace(/\./g, '').replace(',', '.');
+                          const numericAmount = parseFloat(cleanedVal);
+                          if (isNaN(numericAmount) || numericAmount < 0) {
+                            triggerToast('Insira um valor patrimonial válido maior ou igual a zero.');
+                            return;
+                          }
+
+                          const newEntry: PatrimonyEntry = {
+                            id: `pe-${Date.now()}`,
+                            monthYear: newPatrimonyMonthYear,
+                            amount: numericAmount
+                          };
+
+                          setPatrimonyHistory(prev => {
+                            const filtered = prev.filter(p => p.monthYear !== newPatrimonyMonthYear);
+                            return [...filtered, newEntry];
+                          });
+
+                          setNewPatrimonyMonthYear('');
+                          setNewPatrimonyAmount('');
+                          triggerToast('Registro patrimonial adicionado!');
+                        }}
+                        className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"
+                        id="patrimony-page-form"
+                      >
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Mês/Ano</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="MM/AAAA"
+                            value={newPatrimonyMonthYear}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              const digits = value.replace(/\D/g, '');
+                              let formatted = value;
+                              if (digits.length === 2) {
+                                if (value.length === 2) {
+                                  formatted = digits + '/';
+                                } else {
+                                  formatted = digits;
+                                }
+                              } else if (digits.length > 2) {
+                                formatted = digits.slice(0, 2) + '/' + digits.slice(2, 6);
+                              } else {
+                                formatted = digits;
+                              }
+                              setNewPatrimonyMonthYear(formatted.slice(0, 7));
+                            }}
+                            className="w-full bg-black/40 border border-outline-variant/30 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                            id="page-inp-patrimony-monthyear"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Valor Total (R$)</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            required
+                            placeholder="0,00"
+                            value={newPatrimonyAmount}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const digits = val.replace(/\D/g, '');
+                              if (!digits) {
+                                setNewPatrimonyAmount('');
+                                return;
+                              }
+                              if (digits.length < 3) {
+                                const parsedNum = parseInt(digits, 10);
+                                setNewPatrimonyAmount(isNaN(parsedNum) ? '' : String(parsedNum));
+                              } else {
+                                const cents = digits.slice(-2);
+                                const whole = digits.slice(0, -2);
+                                const parsedWhole = parseInt(whole, 10);
+                                const formattedWhole = isNaN(parsedWhole) ? '0' : String(parsedWhole);
+                                setNewPatrimonyAmount(`${formattedWhole},${cents}`);
+                              }
+                            }}
+                            className="w-full bg-black/40 border border-outline-variant/30 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                            id="page-inp-patrimony-amount"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          className="w-full bg-brand-primary hover:bg-brand-primary/80 text-black font-extrabold uppercase text-[10px] tracking-widest py-2.5 rounded-xl transition-all cursor-pointer h-[42px]"
+                          id="page-btn-submit-patrimony"
+                        >
+                          SALVAR REGISTRO
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+
+                  {/* Right Column (1/3 width on desktop): Existing controls list */}
+                  <div className="bg-bg-surface-low border border-outline-variant p-5 rounded-2xl flex flex-col h-full max-h-[500px]" id="patrimony-list-container">
+                    <h4 className="text-[11px] uppercase tracking-widest text-[#ffe08b] font-bold mb-4 font-mono flex items-center justify-between border-b border-outline-variant/20 pb-3">
+                      <span>Registros</span>
+                      <span className="text-[10px] text-text-muted font-mono">{patrimonyHistory.length}</span>
+                    </h4>
+
+                    <div className="flex-1 overflow-y-auto pr-1 space-y-2.5 custom-scrollbar">
+                      {patrimonyHistory.length === 0 ? (
+                        <div className="text-center py-12 text-text-muted text-xs">Nenhum registro de patrimônio lançado.</div>
+                      ) : (
+                        [...patrimonyHistory]
+                          .sort((a, b) => {
+                            const [mA, yA] = a.monthYear.split('/').map(n => parseInt(n, 10));
+                            const [mB, yB] = b.monthYear.split('/').map(n => parseInt(n, 10));
+                            const dateA = new Date(yA < 100 ? 2000 + yA : yA, mA - 1, 1);
+                            const dateB = new Date(yB < 100 ? 2000 + yB : yB, mB - 1, 1);
+                            return dateB.getTime() - dateA.getTime();
+                          })
+                          .map((item) => (
+                            <div 
+                              key={item.id} 
+                              className="bg-black/25 border border-outline-variant/30 hover:border-outline-variant/60 rounded-xl p-3.5 flex items-center justify-between transition-all"
+                              id={`page-patrimony-item-${item.id}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 rounded-full bg-[#ffe08b]" />
+                                <span className="text-xs font-bold text-white font-mono">{item.monthYear}</span>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <span className="font-mono font-black text-xs text-white">
+                                  R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPatrimonyHistory(prev => prev.filter(p => p.id !== item.id));
+                                    triggerToast('Registro de patrimônio removido!');
+                                  }}
+                                  className="text-text-muted hover:text-red-400 p-1.5 rounded hover:bg-white/5 transition-all cursor-pointer"
+                                  title="Remover ponto de controle"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-6" id="contas-screen-grid">
               
               {/* Top Section: Consolidado Card & Action Trigger */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch" id="contas-top-section">
@@ -3761,7 +4318,7 @@ create policy "Users can update own data" on public.nocturne_data
                     
                     <button
                       type="button"
-                      onClick={() => setIsPatrimonyModalOpen(true)}
+                      onClick={() => setIsPatrimonyHistoryView(true)}
                       className="inline-flex items-center gap-1.5 bg-[#ffe08b]/10 hover:bg-[#ffe08b]/20 border border-[#ffe08b]/30 hover:border-[#ffe08b] text-[#ffe08b] text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-[#ffe08b]/5 shrink-0"
                       id="btn-open-patrimony-history"
                     >
@@ -3829,6 +4386,7 @@ create policy "Users can update own data" on public.nocturne_data
               </div>
 
             </div>
+            )}
           </motion.div>
         )}
 
@@ -4103,12 +4661,12 @@ create policy "Users can update own data" on public.nocturne_data
                 <button
                   type="button"
                   onClick={() => {
-                    // "O botão THE LIST por enquanto não vai fazer nada."
+                    setIsTheListPasswordModalOpen(true);
                   }}
                   className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
                   id="btn-tool-thelist"
                 >
-                  <Flame className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
+                  <BookLock className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
                   <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">The List</span>
                 </button>
               </div>
@@ -4217,14 +4775,14 @@ create policy "Users can update own data" on public.nocturne_data
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Finance</span>
                   </div>
-                  <span className="text-white font-bold">v8.1.3</span>
+                  <span className="text-white font-bold">v8.1.4</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Work</span>
                   </div>
-                  <span className="text-white font-bold">v2.0.2</span>
+                  <span className="text-white font-bold">v2.0.4</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
@@ -4243,7 +4801,7 @@ create policy "Users can update own data" on public.nocturne_data
               </ul>
 
               <div className="text-center pt-3 border-t border-outline-variant/10 text-[11px] font-bold text-brand-primary select-none font-mono" id="system-info-developer-text">
-                2026 - v2.1.3 - Desenvolvido por Armindo Neto
+                2026 - v2.1.6 - Desenvolvido por Armindo Neto
               </div>
             </div>
           </motion.div>
@@ -4313,19 +4871,16 @@ create policy "Users can update own data" on public.nocturne_data
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center"
+            className="w-full"
             id="escala-screen-view"
           >
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
-              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
-                <CalendarDays size={32} className="text-brand-primary animate-pulse" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MÓDULO ESCALA</h3>
-                <p className="text-sm font-semibold text-text-high">Menu em desenvolvimento.</p>
-                <p className="text-xs text-text-muted">Em breve você terá acesso a todas as funcionalidades deste espaço.</p>
-              </div>
-            </div>
+            <EscalaScreen
+              turnos={escalaTurnos}
+              setTurnos={setEscalaTurnos}
+              escalaDays={escalaDays}
+              setEscalaDays={setEscalaDays}
+              triggerToast={triggerToast}
+            />
           </motion.div>
         )}
 
@@ -5313,6 +5868,38 @@ create policy "Users can update own data" on public.nocturne_data
           </motion.div>
         )}
 
+        {/* THE LIST SCREEN */}
+        {activeScreen === 'thelist' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col space-y-6 text-left"
+            id="thelist-screen-view"
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveScreen('config');
+                }}
+                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
+                id="btn-back-to-config-from-thelist"
+              >
+                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
+              </button>
+            </div>
+
+            <TheListScreen 
+              theListEntries={theListEntries} 
+              setTheListEntries={setTheListEntries} 
+              theListYearCounts={theListYearCounts}
+              setTheListYearCounts={setTheListYearCounts}
+              triggerToast={triggerToast}
+              theme={theme}
+            />
+          </motion.div>
+        )}
+
         </div>
       </main>
 
@@ -5614,6 +6201,83 @@ create policy "Users can update own data" on public.nocturne_data
         onSave={handleSaveTransaction}
         initialTransaction={editingTransaction}
       />
+
+      {/* THE LIST PASSWORD MODAL */}
+      <AnimatePresence>
+        {isTheListPasswordModalOpen && (
+          <div 
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" 
+            id="the-list-password-modal-overlay"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-sm bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-6 space-y-4 shadow-xl text-left"
+              id="the-list-password-modal-content"
+            >
+              <div className="flex items-center gap-2 border-b border-outline-variant/10 pb-3">
+                <BookLock className="text-brand-primary" size={18} />
+                <h3 className="text-xs font-black text-white uppercase tracking-wider font-display">
+                  Área Restrita
+                </h3>
+              </div>
+
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (theListPasswordInput === 'Katet19xixmcmxcix!') {
+                    setActiveScreen('thelist');
+                    setTheListPasswordInput('');
+                    setIsTheListPasswordModalOpen(false);
+                    triggerToast('Acesso concedido!');
+                  } else {
+                    triggerToast('Senha incorreta!');
+                  }
+                }}
+                className="space-y-4"
+                id="form-the-list-password"
+              >
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-text-muted font-display block">
+                    Senha:
+                  </label>
+                  <input
+                    type="password"
+                    placeholder="Digite a senha de acesso..."
+                    value={theListPasswordInput}
+                    onChange={(e) => setTheListPasswordInput(e.target.value)}
+                    className="w-full bg-bg-surface-med border border-outline-variant/30 hover:border-outline-variant/50 focus:border-brand-primary focus:outline-none rounded-xl p-3 text-xs text-white placeholder:text-text-muted transition-all font-sans"
+                    autoFocus
+                    id="input-the-list-password"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsTheListPasswordModalOpen(false);
+                      setTheListPasswordInput('');
+                    }}
+                    className="bg-bg-surface-med hover:bg-bg-surface-high border border-outline-variant/20 text-text-muted hover:text-white px-4 py-2.5 rounded-xl text-[10px] font-black tracking-wider uppercase font-display transition-all cursor-pointer"
+                    id="btn-cancel-the-list-password"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-brand-primary text-black hover:brightness-110 px-4 py-2.5 rounded-xl text-[10px] font-black tracking-wider uppercase font-display transition-all gold-glow cursor-pointer"
+                    id="btn-submit-the-list-password"
+                  >
+                    Entrar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal para Novo Período de Despesas */}
       <AnimatePresence>

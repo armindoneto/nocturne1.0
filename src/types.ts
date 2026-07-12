@@ -137,6 +137,37 @@ export interface AppNote {
   createdAt: string; // ISO date string or formatted date string
 }
 
+export interface EscalaTurno {
+  id: string;
+  nome: string;
+  legenda: string;
+  duracao: string; // HH:MM
+  categoria: string; // e.g. "Manhã", "Tarde", "Noite", "Serviço", "Outro"
+  cor: string; // id of color in SHIFT_COLORS
+  hidden?: boolean;
+}
+
+export interface EscalaDay {
+  dateStr: string; // YYYY-MM-DD
+  turnos: string[]; // ids of EscalaTurno assigned (max 2)
+}
+
+export interface TheListEntry {
+  id: string;
+  nome: string;
+  periodo: string;
+  local: string;
+  k: boolean;
+  f: boolean;
+  d: boolean;
+  t: boolean;
+  p: boolean;
+  s: boolean;
+  esquadrao?: string;
+  note?: string;
+}
+
+
 
 
 

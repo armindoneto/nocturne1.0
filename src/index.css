@@ -403,7 +403,7 @@ button {
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: var(--bg-base);
+  background: transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -416,7 +416,7 @@ button {
 }
 
 .light .custom-scrollbar::-webkit-scrollbar-track {
-  background: var(--bg-base);
+  background: transparent;
 }
 
 .light .custom-scrollbar::-webkit-scrollbar-thumb {
