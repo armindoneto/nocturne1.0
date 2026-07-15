@@ -452,8 +452,8 @@ export default function ME4Screen({
           </div>
         </div>
 
-        {/* List Table View */}
-        <div className={`overflow-x-auto border border-outline-variant/20 rounded-2xl transition-all ${theme === 'light' ? 'bg-white shadow-sm' : 'bg-zinc-950/40'}`} id="me4-table-wrapper">
+        {/* Desktop List Table View */}
+        <div className={`hidden md:block overflow-x-auto border border-outline-variant/20 rounded-2xl transition-all ${theme === 'light' ? 'bg-white shadow-sm' : 'bg-zinc-950/40'}`} id="me4-table-wrapper">
           <table className="w-full text-left border-collapse" id="me4-table">
             <thead>
               <tr className={`border-b border-outline-variant/20 ${theme === 'light' ? 'bg-zinc-100/70' : 'bg-zinc-950/60'}`}>
@@ -483,7 +483,7 @@ export default function ME4Screen({
                   return (
                     <tr
                       key={person.nrOrd}
-                      className={`border-b border-outline-variant/10 transition-colors ${
+                      className={`transition-colors ${
                         isExcluded 
                           ? theme === 'light'
                             ? 'bg-zinc-100/40 hover:bg-zinc-200/50 text-text-muted/60'
@@ -498,7 +498,7 @@ export default function ME4Screen({
                       }`}
                     >
                       {/* Original Rank (NR) */}
-                      <td className="px-4 py-3 text-center text-xs font-mono font-medium">
+                      <td className="px-4 py-3 text-center text-xs font-mono font-medium border-b border-white/10">
                         <span className={
                           isExcluded 
                             ? 'line-through text-text-muted/40' 
@@ -513,7 +513,7 @@ export default function ME4Screen({
                       </td>
 
                       {/* Nr Ord */}
-                      <td className="px-4 py-3 text-xs font-mono">
+                      <td className="px-4 py-3 text-xs font-mono border-b border-white/10">
                         <button
                           onClick={() => toggleHighlight(person.nrOrd)}
                           className={`font-mono text-xs cursor-pointer focus:outline-none transition-colors ${
@@ -534,7 +534,7 @@ export default function ME4Screen({
                       </td>
 
                       {/* Nome - Clickable to Exclude */}
-                      <td className="px-4 py-3 text-xs font-sans">
+                      <td className="px-4 py-3 text-xs font-sans border-b border-white/10">
                         <div className="flex flex-wrap items-center gap-2">
                           <button
                             onClick={() => handleNameClick(person)}
@@ -562,7 +562,7 @@ export default function ME4Screen({
                       </td>
 
                       {/* Média */}
-                      <td className="px-4 py-3 text-right text-xs font-mono">
+                      <td className="px-4 py-3 text-right text-xs font-mono border-b border-white/10">
                         <span className={
                           isExcluded 
                             ? 'line-through text-text-muted/40' 
@@ -577,7 +577,7 @@ export default function ME4Screen({
                       </td>
 
                       {/* Nova Classificação and Up Shifts Badge */}
-                      <td className="px-4 py-3 text-right text-xs font-mono font-medium">
+                      <td className="px-4 py-3 text-right text-xs font-mono font-medium border-b border-white/10">
                         {isExcluded ? (
                           <span className="text-[10px] text-text-muted/30 uppercase tracking-widest italic">Excluído</span>
                         ) : (
@@ -606,6 +606,118 @@ export default function ME4Screen({
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile List View (No horizontal scroll) */}
+        <div className="block md:hidden space-y-3" id="me4-mobile-list">
+          {filteredPeople.length === 0 ? (
+            <div className="text-center py-12 text-xs text-text-muted font-mono bg-bg-surface-low rounded-2xl border border-outline-variant/20">
+              Nenhum resultado encontrado para os filtros atuais.
+            </div>
+          ) : (
+            <div className={`border border-outline-variant/20 rounded-2xl overflow-hidden ${theme === 'light' ? 'bg-white shadow-sm' : 'bg-zinc-950/40'}`}>
+              {filteredPeople.map((person) => {
+                const isExcluded = exclusionMap.has(person.nrOrd);
+                const reason = exclusionMap.get(person.nrOrd);
+                const rankInfo = dynamicRankings.get(person.nrOrd);
+                const newRank = rankInfo ? rankInfo.newRank : -1;
+                const upShifts = rankInfo ? rankInfo.upShifts : 0;
+                const isHighlighted = highlights.includes(person.nrOrd);
+
+                return (
+                  <div
+                    key={person.nrOrd}
+                    className={`p-4 flex flex-col gap-3 transition-colors border-b border-white/10 last:border-b-0 ${
+                      isExcluded
+                        ? theme === 'light'
+                          ? 'bg-zinc-100/40 text-text-muted/60'
+                          : 'bg-zinc-900/20 text-text-muted/50'
+                        : isHighlighted
+                          ? theme === 'light'
+                            ? 'bg-purple-100/50 text-purple-950 font-medium'
+                            : 'bg-purple-950/20 text-purple-200'
+                          : theme === 'light'
+                            ? 'bg-white hover:bg-zinc-100/20 text-text-high'
+                            : 'bg-transparent hover:bg-white/[0.01] text-text-high'
+                    }`}
+                  >
+                    {/* Top Row: Ranks and Media */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {isExcluded ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider text-text-muted/50 bg-bg-surface-high border border-white/10 px-2 py-0.5 rounded">
+                            Excluído
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-black font-display ${isHighlighted ? 'text-purple-400' : 'text-white'}`}>
+                              {newRank}º
+                            </span>
+                            {upShifts > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-1 py-0.5 rounded border border-emerald-500/20">
+                                <ChevronUp size={8} className="stroke-[3px]" />
+                                {upShifts}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <span className="text-[10px] font-mono text-text-muted">
+                          Original: #{person.nr}
+                        </span>
+                      </div>
+
+                      <div className="text-right">
+                        <span className={`text-xs font-mono font-bold ${isExcluded ? 'line-through text-text-muted/40' : 'text-white'}`}>
+                          {person.media}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Middle Area: Name & Actions */}
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          onClick={() => handleNameClick(person)}
+                          className={`text-left text-xs font-bold cursor-pointer transition-all ${
+                            isExcluded
+                              ? 'line-through text-text-muted/40'
+                              : isHighlighted
+                                ? theme === 'light'
+                                  ? 'text-purple-950 hover:text-purple-800'
+                                  : 'text-purple-200 hover:text-purple-300'
+                                : 'text-text-high hover:text-brand-primary'
+                          }`}
+                        >
+                          {person.nome}
+                        </button>
+                        {isExcluded && reason && (
+                          <span className="text-[10px] text-amber-500/80 font-mono italic">
+                            ({reason})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[10px] font-mono">
+                        <span className="text-text-muted">Ordem:</span>
+                        <button
+                          onClick={() => toggleHighlight(person.nrOrd)}
+                          className={`cursor-pointer hover:underline ${
+                            isExcluded
+                              ? 'line-through text-text-muted/40'
+                              : isHighlighted
+                                ? 'text-purple-400 font-bold'
+                                : 'text-text-muted hover:text-purple-400'
+                          }`}
+                        >
+                          {person.nrOrd}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

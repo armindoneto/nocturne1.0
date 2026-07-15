@@ -5095,14 +5095,14 @@ create policy "Users can update own data" on public.nocturne_data
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Finance</span>
                   </div>
-                  <span className="text-white font-bold">v8.1.4</span>
+                  <span className="text-white font-bold">v8.1.5</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Work</span>
                   </div>
-                  <span className="text-white font-bold">v2.0.4</span>
+                  <span className="text-white font-bold">v2.0.5</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
@@ -5116,12 +5116,12 @@ create policy "Users can update own data" on public.nocturne_data
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Games</span>
                   </div>
-                  <span className="text-white font-bold">v3.1.0</span>
+                  <span className="text-white font-bold">v3.1.1</span>
                 </li>
               </ul>
 
               <div className="text-center pt-3 border-t border-outline-variant/10 text-[11px] font-bold text-brand-primary select-none font-mono" id="system-info-developer-text">
-                2026 - v2.1.8 - Desenvolvido por Armindo Neto
+                2026 - v2.1.9 - Desenvolvido por Armindo Neto
               </div>
             </div>
           </motion.div>

@@ -363,11 +363,6 @@ export default function GamesScreen({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addPokemonGenId, setAddPokemonGenId] = useState('gen1');
 
-  // Import Pokemon States
-  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importPokemonGenId, setImportPokemonGenId] = useState('gen1');
-  const [importRawData, setImportRawData] = useState('');
-
   // Edit Pokemon States
   const [editingPokemon, setEditingPokemon] = useState<PokemonEntry | null>(null);
   const [editingPokemonGenId, setEditingPokemonGenId] = useState('');
@@ -544,113 +539,6 @@ export default function GamesScreen({
       };
     }));
     triggerToast(`${pokemonName} removido da lista.`);
-  };
-
-  const handleImportPokemons = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!importRawData.trim()) {
-      triggerToast('Insira os dados para importar.');
-      return;
-    }
-
-    const lines = importRawData.split('\n');
-    const newPokemons: PokemonEntry[] = [];
-    let skippedCount = 0;
-
-    const isTrue = (val: string | undefined) => {
-      if (!val) return false;
-      const u = val.trim().toUpperCase();
-      return u === 'TRUE' || u === 'VERDADEIRO' || u === 'SIM' || u === '1';
-    };
-
-    lines.forEach((line, index) => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) return; // skip empty lines
-
-      // Split the line by semicolon
-      const parts = trimmedLine.split(';');
-      if (parts.length < 3) {
-        skippedCount++;
-        return;
-      }
-
-      // If it looks like a header line, skip it
-      if (
-        parts[0].trim() === 'Nº' || 
-        parts[2].trim().toUpperCase() === 'NOME' ||
-        parts[2].trim().toUpperCase() === 'NAME' ||
-        trimmedLine.toUpperCase().includes('SEM GÊNERO') ||
-        trimmedLine.toUpperCase().includes('EXTRA FORM')
-      ) {
-        skippedCount++;
-        return;
-      }
-
-      const num = parts[0].trim() || '???';
-      const spriteId = parts[1].trim() || undefined;
-      const name = parts[2].trim();
-      
-      if (!name) {
-        skippedCount++;
-        return;
-      }
-
-      const hasMale = isTrue(parts[3]);
-      const hasFemale = isTrue(parts[4]);
-      const hasGenderless = isTrue(parts[5]);
-
-      const rawType1 = parts[6]?.trim() || '';
-      const rawType2 = parts[7]?.trim() || '';
-      
-      const type1 = validateAndStandardiseType(rawType1) || 'Normal';
-      const type2 = validateAndStandardiseType(rawType2) || undefined;
-
-      const isLegendary = isTrue(parts[8]);
-      const isMythical = isTrue(parts[9]);
-      const isExtraForm = isTrue(parts[10]);
-
-      const entry: PokemonEntry = {
-        id: `pokemon-custom-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`,
-        num,
-        name,
-        spriteId: spriteId || undefined,
-        hasMale: isExtraForm ? false : hasMale,
-        hasFemale: isExtraForm ? false : hasFemale,
-        hasGenderless: isExtraForm ? false : hasGenderless,
-        isMaleCaught: false,
-        isFemaleCaught: false,
-        isGenderlessCaught: false,
-        type1,
-        type2,
-        isLegendary: isExtraForm ? false : isLegendary,
-        isMythical: isExtraForm ? false : isMythical,
-        isExtraForm
-      };
-
-      newPokemons.push(entry);
-    });
-
-    if (newPokemons.length === 0) {
-      triggerToast('Nenhum Pokémon válido encontrado para importar.');
-      return;
-    }
-
-    setPokemonGenerations(prev => prev.map(gen => {
-      if (gen.id !== importPokemonGenId) return gen;
-      return {
-        ...gen,
-        pokemons: [...gen.pokemons, ...newPokemons]
-      };
-    }));
-
-    setIsImportModalOpen(false);
-    setImportRawData('');
-    
-    let msg = `${newPokemons.length} Pokémon importados com sucesso na Geração ${importPokemonGenId.replace('gen', '')}!`;
-    if (skippedCount > 0) {
-      msg += ` (${skippedCount} linhas ignoradas/cabeçalhos)`;
-    }
-    triggerToast(msg);
   };
 
   const handleMovePokemon = (generationId: string, pokemonId: string, direction: 'up' | 'down') => {
@@ -1476,6 +1364,16 @@ export default function GamesScreen({
           });
         });
 
+        const uniqueNums = new Set<string>();
+        pokemonGenerations.forEach(gen => {
+          gen.pokemons.forEach(p => {
+            if (p.num) {
+              uniqueNums.add(p.num);
+            }
+          });
+        });
+        const totalUniquePokemons = uniqueNums.size;
+
         const globalPercent = globalTotal > 0 ? (globalCaught / globalTotal) * 100 : 0;
         const globalPercentFormatted = globalPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -1512,11 +1410,14 @@ export default function GamesScreen({
           >
             {/* Global Stats Banner */}
             <div className="bg-bg-surface-low border border-outline-variant/40 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="space-y-1 text-center md:text-left">
+              <div className="space-y-1.5 text-center md:text-left">
                 <h3 className="font-display font-black text-2xl text-white uppercase tracking-wider flex items-center justify-center md:justify-start gap-2.5">
                   <span className="inline-block w-3.5 h-3.5 rounded-full bg-red-500 animate-pulse"></span>
                   POKÉDEX
                 </h3>
+                <p className="text-xs font-mono font-bold text-text-muted uppercase tracking-wider">
+                  Total de Pokémon Únicos: <span className="text-red-400 font-black text-sm">{totalUniquePokemons}</span>
+                </p>
               </div>
 
               <div className="flex items-center gap-6 w-full md:w-auto justify-center md:justify-end">
@@ -1556,10 +1457,11 @@ export default function GamesScreen({
             </div>
 
             {/* Search and Action globally */}
-            <div className="bg-bg-surface-low border border-outline-variant/40 rounded-3xl p-5 shadow-lg">
-              <div className="flex items-center gap-3 w-full">
+            <div className="bg-bg-surface-low border border-outline-variant/40 rounded-3xl p-4 sm:p-5 shadow-lg">
+              <div className="flex flex-col lg:flex-row lg:items-center gap-3 w-full">
+                {/* Search Input */}
                 <div className="relative flex-1 bg-bg-surface-med/30 rounded-2xl border border-outline-variant/30 px-4 py-2.5 flex items-center gap-2.5">
-                  <Search size={16} className="text-text-muted" />
+                  <Search size={16} className="text-text-muted shrink-0" />
                   <input
                     type="text"
                     placeholder="Buscar Pokémon..."
@@ -1577,167 +1479,159 @@ export default function GamesScreen({
                   )}
                 </div>
 
-                {/* "Não Pegos" Button */}
-                <button
-                  type="button"
-                  onClick={() => setFilterNotCaught(!filterNotCaught)}
-                  className={`h-10 px-4 rounded-2xl border flex items-center justify-center gap-2 font-display font-black text-xs uppercase tracking-wider transition-all select-none cursor-pointer shrink-0 ${
-                    filterNotCaught
-                      ? 'bg-red-500/15 border-red-500/50 text-red-400 font-bold'
-                      : 'bg-bg-surface-med/60 hover:bg-bg-surface-med hover:text-white border-outline-variant/30 hover:border-outline-variant text-text-high'
-                  }`}
-                  title="Mostrar apenas Pokémon não completamente pegos"
-                >
-                  <span className={`w-2 h-2 rounded-full ${filterNotCaught ? 'bg-red-500 animate-pulse' : 'bg-text-muted'}`} />
-                  <span>Não Pegos</span>
-                </button>
-
-                {/* Filter Button and Popover */}
-                <div className="relative">
+                {/* Buttons Row */}
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {/* "Não Pegos" Button */}
                   <button
                     type="button"
-                    onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
-                    className={`h-10 px-4 rounded-2xl border flex items-center justify-center gap-2 font-display font-black text-xs uppercase tracking-wider transition-all select-none cursor-pointer ${
-                      selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical
-                        ? 'bg-red-500/15 border-red-500/50 text-red-400'
+                    onClick={() => setFilterNotCaught(!filterNotCaught)}
+                    className={`h-10 px-3 sm:px-4 rounded-2xl border flex items-center justify-center gap-2 font-display font-black text-xs uppercase tracking-wider transition-all select-none cursor-pointer flex-1 sm:flex-initial ${
+                      filterNotCaught
+                        ? 'bg-red-500/15 border-red-500/50 text-red-400 font-bold'
                         : 'bg-bg-surface-med/60 hover:bg-bg-surface-med hover:text-white border-outline-variant/30 hover:border-outline-variant text-text-high'
                     }`}
-                    title="Filtrar Pokémon"
+                    title="Mostrar apenas Pokémon não completamente pegos"
                   >
-                    <Filter size={14} className={selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical ? 'text-red-400' : 'text-text-muted'} />
-                    <span>Filtros</span>
-                    {(selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical) && (
-                      <span className="bg-red-500 text-white font-mono font-bold text-[9px] px-1.5 py-0.5 rounded-full flex items-center justify-center min-w-[18px]">
-                        {selectedFilterTypes.length + (selectedFilterLegendary ? 1 : 0) + (selectedFilterMythical ? 1 : 0)}
-                      </span>
-                    )}
+                    <span className={`w-2 h-2 rounded-full ${filterNotCaught ? 'bg-red-500 animate-pulse' : 'bg-text-muted'}`} />
+                    <span>Não Pegos</span>
                   </button>
 
-                  <AnimatePresence>
-                    {isFilterDropdownOpen && (
-                      <>
-                        {/* Backdrop to close */}
-                        <div className="fixed inset-0 z-40" onClick={() => setIsFilterDropdownOpen(false)} />
-                        
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute right-0 mt-2 w-72 bg-bg-surface-high border border-outline-variant/60 rounded-2xl p-4 shadow-2xl z-50 space-y-4"
-                        >
-                          <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
-                            <span className="text-xs font-black uppercase tracking-wider text-white font-display">Filtros</span>
-                            {(selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical) && (
-                              <button
-                                onClick={() => {
-                                  setSelectedFilterTypes([]);
-                                  setSelectedFilterLegendary(false);
-                                  setSelectedFilterMythical(false);
-                                }}
-                                className="text-[10px] font-black uppercase tracking-wider text-red-400 hover:text-red-300 transition-all cursor-pointer"
-                              >
-                                Limpar Filtros
-                              </button>
-                            )}
-                          </div>
+                  {/* Filter Button and Popover */}
+                  <div className="relative flex-1 sm:flex-initial">
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+                      className={`h-10 w-full sm:w-auto px-3 sm:px-4 rounded-2xl border flex items-center justify-center gap-2 font-display font-black text-xs uppercase tracking-wider transition-all select-none cursor-pointer ${
+                        selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical
+                          ? 'bg-red-500/15 border-red-500/50 text-red-400'
+                          : 'bg-bg-surface-med/60 hover:bg-bg-surface-med hover:text-white border-outline-variant/30 hover:border-outline-variant text-text-high'
+                      }`}
+                      title="Filtrar Pokémon"
+                    >
+                      <Filter size={14} className={selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical ? 'text-red-400' : 'text-text-muted'} />
+                      <span>Filtros</span>
+                      {(selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical) && (
+                        <span className="bg-red-500 text-white font-mono font-bold text-[9px] px-1.5 py-0.5 rounded-full flex items-center justify-center min-w-[18px]">
+                          {selectedFilterTypes.length + (selectedFilterLegendary ? 1 : 0) + (selectedFilterMythical ? 1 : 0)}
+                        </span>
+                      )}
+                    </button>
 
-                          {/* Rarity Selectors */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedFilterLegendary(!selectedFilterLegendary)}
-                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
-                                selectedFilterLegendary
-                                  ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.15)]'
-                                  : 'bg-bg-surface-med/30 border-outline-variant/15 text-text-muted hover:text-white hover:border-outline-variant/40'
-                              }`}
-                            >
-                              <div className="w-5 h-5 rounded-full bg-amber-500/15 border border-amber-500 text-amber-500 font-black flex items-center justify-center text-[9px] select-none">
-                                L
-                              </div>
-                              Lendário
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedFilterMythical(!selectedFilterMythical)}
-                              className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
-                                selectedFilterMythical
-                                  ? 'bg-purple-500/15 border-purple-500/50 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.15)]'
-                                  : 'bg-bg-surface-med/30 border-outline-variant/15 text-text-muted hover:text-white hover:border-outline-variant/40'
-                              }`}
-                            >
-                              <div className="w-5 h-5 rounded-full bg-purple-500/15 border border-purple-500 text-purple-500 font-black flex items-center justify-center text-[9px] select-none">
-                                M
-                              </div>
-                              Mítico
-                            </button>
-                          </div>
-
-                          {/* Types Selector */}
-                          <div className="space-y-1.5">
-                            <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block">Tipos de Pokémon</label>
-                            <div className="grid grid-cols-3 gap-1.5 max-h-[180px] overflow-y-auto pr-1 bg-bg-surface-med/20 p-2 rounded-xl border border-outline-variant/20 scrollbar-thin scrollbar-thumb-outline-variant/40">
-                              {POKEMON_TYPES.map(t => {
-                                const isSelected = selectedFilterTypes.includes(t);
-                                return (
-                                  <button
-                                    key={t}
-                                    type="button"
-                                    onClick={() => {
-                                      if (isSelected) {
-                                        setSelectedFilterTypes(selectedFilterTypes.filter(x => x !== t));
-                                      } else {
-                                        setSelectedFilterTypes([...selectedFilterTypes, t]);
-                                      }
-                                    }}
-                                    className={`py-1.5 rounded-xl text-[9px] font-bold transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                                      isSelected
-                                        ? 'bg-red-500/15 border-red-500/50 text-white font-black'
-                                        : 'bg-bg-surface-med/40 border-outline-variant/10 text-text-muted/80 hover:text-white hover:bg-bg-surface-med/80 hover:border-outline-variant/30'
-                                    }`}
-                                  >
-                                    <img
-                                      src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${t.toLowerCase()}.png`}
-                                      alt={t}
-                                      title={t}
-                                      referrerPolicy="no-referrer"
-                                      className="w-5 h-5 object-contain shrink-0"
-                                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                    />
-                                    <span>{t}</span>
-                                  </button>
-                                );
-                              })}
+                    <AnimatePresence>
+                      {isFilterDropdownOpen && (
+                        <>
+                          {/* Backdrop to close */}
+                          <div className="fixed inset-0 z-40" onClick={() => setIsFilterDropdownOpen(false)} />
+                          
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute right-0 mt-2 w-72 bg-bg-surface-high border border-outline-variant/60 rounded-2xl p-4 shadow-2xl z-50 space-y-4"
+                          >
+                            <div className="flex items-center justify-between border-b border-outline-variant/20 pb-2">
+                              <span className="text-xs font-black uppercase tracking-wider text-white font-display">Filtros</span>
+                              {(selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical) && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedFilterTypes([]);
+                                    setSelectedFilterLegendary(false);
+                                    setSelectedFilterMythical(false);
+                                  }}
+                                  className="text-[10px] font-black uppercase tracking-wider text-red-400 hover:text-red-300 transition-all cursor-pointer"
+                                >
+                                  Limpar Filtros
+                                </button>
+                              )}
                             </div>
-                          </div>
-                        </motion.div>
-                      </>
-                    )}
-                  </AnimatePresence>
+
+                            {/* Rarity Selectors */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFilterLegendary(!selectedFilterLegendary)}
+                                className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                                  selectedFilterLegendary
+                                    ? 'bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-[0_0_8px_rgba(245,158,11,0.15)]'
+                                    : 'bg-bg-surface-med/30 border-outline-variant/15 text-text-muted hover:text-white hover:border-outline-variant/40'
+                                }`}
+                              >
+                                <div className="w-5 h-5 rounded-full bg-amber-500/15 border border-amber-500 text-amber-500 font-black flex items-center justify-center text-[9px] select-none">
+                                  L
+                                </div>
+                                Lendário
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedFilterMythical(!selectedFilterMythical)}
+                                className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                                  selectedFilterMythical
+                                    ? 'bg-purple-500/15 border-purple-500/50 text-purple-300 shadow-[0_0_8px_rgba(168,85,247,0.15)]'
+                                    : 'bg-bg-surface-med/30 border-outline-variant/15 text-text-muted hover:text-white hover:border-outline-variant/40'
+                                }`}
+                              >
+                                <div className="w-5 h-5 rounded-full bg-purple-500/15 border border-purple-500 text-purple-500 font-black flex items-center justify-center text-[9px] select-none">
+                                  M
+                                </div>
+                                Mítico
+                              </button>
+                            </div>
+
+                            {/* Types Selector */}
+                            <div className="space-y-1.5">
+                              <label className="text-[9px] font-black uppercase tracking-wider text-text-muted block">Tipos de Pokémon</label>
+                              <div className="grid grid-cols-3 gap-1.5 max-h-[180px] overflow-y-auto pr-1 bg-bg-surface-med/20 p-2 rounded-xl border border-outline-variant/20 scrollbar-thin scrollbar-thumb-outline-variant/40">
+                                {POKEMON_TYPES.map(t => {
+                                  const isSelected = selectedFilterTypes.includes(t);
+                                  return (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      onClick={() => {
+                                        if (isSelected) {
+                                          setSelectedFilterTypes(selectedFilterTypes.filter(x => x !== t));
+                                        } else {
+                                          setSelectedFilterTypes([...selectedFilterTypes, t]);
+                                        }
+                                      }}
+                                      className={`py-1.5 rounded-xl text-[9px] font-bold transition-all border flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                                        isSelected
+                                          ? 'bg-red-500/15 border-red-500/50 text-white font-black'
+                                          : 'bg-bg-surface-med/40 border-outline-variant/10 text-text-muted/80 hover:text-white hover:bg-bg-surface-med/80 hover:border-outline-variant/30'
+                                      }`}
+                                    >
+                                      <img
+                                        src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${t.toLowerCase()}.png`}
+                                        alt={t}
+                                        title={t}
+                                        referrerPolicy="no-referrer"
+                                        className="w-5 h-5 object-contain shrink-0"
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                      />
+                                      <span>{t}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Add Pokémon Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsAddModalOpen(true)}
+                    className="bg-red-500 hover:bg-red-600 text-white px-3 sm:px-4 rounded-2xl flex items-center justify-center gap-1.5 font-display font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-red-500/10 cursor-pointer h-10 select-none flex-1 sm:flex-initial"
+                    title="Adicionar Novo Pokémon"
+                  >
+                    <Plus size={16} strokeWidth={3} />
+                    <span>Adicionar</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImportPokemonGenId(expandedGens[0] || 'gen1');
-                    setImportRawData('');
-                    setIsImportModalOpen(true);
-                  }}
-                  className="bg-bg-surface-med/60 hover:bg-bg-surface-med hover:text-white border border-outline-variant/30 hover:border-outline-variant text-text-high px-3 py-2.5 rounded-2xl flex items-center justify-center gap-1.5 font-display font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-black/5 cursor-pointer h-10 select-none shrink-0"
-                  title="Importar Lista de Pokémon"
-                >
-                  <Upload size={14} strokeWidth={2.5} className="text-red-400" />
-                  <span className="hidden xs:inline">Importar</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(true)}
-                  className="bg-red-500 hover:bg-red-600 text-white p-2.5 rounded-2xl flex items-center justify-center gap-1.5 font-display font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-red-500/10 cursor-pointer h-10 select-none shrink-0"
-                  title="Adicionar Novo Pokémon"
-                >
-                  <Plus size={16} strokeWidth={3} />
-                  <span className="hidden xs:inline">Adicionar</span>
-                </button>
               </div>
             </div>
 
@@ -1890,315 +1784,540 @@ export default function GamesScreen({
                                 )}
                               </div>
                             ) : (
-                              <div className="overflow-x-auto rounded-2xl border border-outline-variant/30 bg-bg-surface-med/5">
-                                <table className="w-full text-left border-collapse">
-                                  <thead>
-                                    <tr className="bg-bg-surface-med/25 border-b border-outline-variant/35 text-[10px] font-black uppercase tracking-wider text-text-muted font-display select-none">
-                                      <th className="py-4 px-4 w-16">Nº</th>
-                                      <th className="py-4 px-4 w-24 text-center"></th>
-                                      <th className="py-4 px-4">Pokémon</th>
-                                      <th className="py-4 px-4 text-center w-16"></th>
-                                      <th className="py-4 px-4 text-center w-28">Tipo</th>
-                                      <th className="py-4 px-4 text-center w-32">
-                                        <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
-                                          <svg className="w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <circle cx="10" cy="14" r="5" />
-                                            <path d="M15 9l5-5" />
-                                            <path d="M16 4h4v4" />
-                                          </svg>
-                                          <span>Masculino</span>
-                                        </div>
-                                      </th>
-                                      <th className="py-4 px-4 text-center w-32">
-                                        <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
-                                          <svg className="w-4 h-4 text-pink-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <circle cx="12" cy="9" r="5" />
-                                            <path d="M12 14v7" />
-                                            <path d="M9 18h6" />
-                                          </svg>
-                                          <span>Feminino</span>
-                                        </div>
-                                      </th>
-                                      <th className="py-4 px-4 text-center w-32">
-                                        <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
-                                          <svg className="w-4 h-4 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                            <circle cx="12" cy="12" r="6" />
-                                            <circle cx="12" cy="12" r="2" />
-                                          </svg>
-                                          <span>Sem Gênero</span>
-                                        </div>
-                                      </th>
-                                      <th className="py-4 px-4 text-center w-32">Ações</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-outline-variant/15 text-xs text-text-high">
-                                    {filteredPokemons.map((p, pIdx) => {
-                                      const isFullyCaught = p.isExtraForm || (
-                                                            (!p.hasMale || p.isMaleCaught) &&
-                                                            (!p.hasFemale || p.isFemaleCaught) &&
-                                                            (!p.hasGenderless || p.isGenderlessCaught)
-                                                          );
-                                      return (
-                                        <tr
-                                          key={p.id}
-                                          className={`transition-all group/row border-l-4 ${
-                                            isFullyCaught
-                                              ? 'bg-[#0f2d21] hover:bg-[#143d2c] border-l-emerald-400 [.light_&]:bg-emerald-500/15 [.light_&]:hover:bg-emerald-500/25 [.light_&]:border-l-emerald-500'
-                                              : 'bg-[#2d1212] hover:bg-[#3d1818] border-l-red-500 [.light_&]:bg-red-500/10 [.light_&]:hover:bg-red-500/20 [.light_&]:border-l-red-500'
-                                          }`}
-                                        >
-                                          {/* ID / Num */}
-                                          <td className="py-3 px-4 font-mono font-bold text-text-muted/65 select-none">
-                                            #{p.num}
-                                          </td>
-                                          {/* Sprite */}
-                                          <td className="py-1 px-4 text-center w-24 min-w-[96px]">
-                                            <div className="w-20 h-20 flex items-center justify-center relative mx-auto">
-                                              {getPokemonSpriteUrl(p) ? (
-                                                <img
-                                                  src={getPokemonSpriteUrl(p)!}
-                                                  alt={p.name}
-                                                  referrerPolicy="no-referrer"
-                                                  className="w-20 h-20 object-contain z-10"
-                                                  onError={(e) => {
-                                                    const img = e.currentTarget;
-                                                    if (!img.getAttribute('data-tried-fallback')) {
-                                                      img.setAttribute('data-tried-fallback', 'true');
-                                                      const currentSrc = img.src;
-                                                      const parts = currentSrc.split('/');
-                                                      const lastPart = parts[parts.length - 1]; // e.g., "001.png"
-                                                      
-                                                      // Strip leading zeros from the start of the filename or after any letters
-                                                      // e.g. "001.png" -> "1.png", "019f.png" -> "19f.png"
-                                                      const strippedPart = lastPart.replace(/^0+([1-9]\d*|0)/, '$1');
-                                                      
-                                                      if (strippedPart !== lastPart) {
-                                                        parts[parts.length - 1] = strippedPart;
-                                                        img.src = parts.join('/');
-                                                        return;
+                              <>
+                                {/* Desktop View (Keep original layout) */}
+                                <div className="hidden md:block overflow-x-auto rounded-2xl border border-outline-variant/30 bg-bg-surface-med/5">
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className="bg-bg-surface-med/25 border-b border-outline-variant/35 text-[10px] font-black uppercase tracking-wider text-text-muted font-display select-none">
+                                        <th className="py-4 px-4 w-16">Nº</th>
+                                        <th className="py-4 px-4 w-24 text-center"></th>
+                                        <th className="py-4 px-4">Pokémon</th>
+                                        <th className="py-4 px-4 text-center w-16"></th>
+                                        <th className="py-4 px-4 text-center w-28">Tipo</th>
+                                        <th className="py-4 px-4 text-center w-32">
+                                          <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
+                                            <svg className="w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                              <circle cx="10" cy="14" r="5" />
+                                              <path d="M15 9l5-5" />
+                                              <path d="M16 4h4v4" />
+                                            </svg>
+                                            <span>Masculino</span>
+                                          </div>
+                                        </th>
+                                        <th className="py-4 px-4 text-center w-32">
+                                          <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
+                                            <svg className="w-4 h-4 text-pink-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                              <circle cx="12" cy="9" r="5" />
+                                              <path d="M12 14v7" />
+                                              <path d="M9 18h6" />
+                                            </svg>
+                                            <span>Feminino</span>
+                                          </div>
+                                        </th>
+                                        <th className="py-4 px-4 text-center w-32">
+                                          <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
+                                            <svg className="w-4 h-4 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                              <circle cx="12" cy="12" r="6" />
+                                              <circle cx="12" cy="12" r="2" />
+                                            </svg>
+                                            <span>Sem Gênero</span>
+                                          </div>
+                                        </th>
+                                        <th className="py-4 px-4 text-center w-32">Ações</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-outline-variant/15 text-xs text-text-high">
+                                      {filteredPokemons.map((p, pIdx) => {
+                                        const isFullyCaught = p.isExtraForm || (
+                                                              ((!p.hasMale || p.isMaleCaught) &&
+                                                              (!p.hasFemale || p.isFemaleCaught) &&
+                                                              (!p.hasGenderless || p.isGenderlessCaught))
+                                                            );
+                                        return (
+                                          <tr
+                                            key={p.id}
+                                            className={`transition-all group/row border-l-4 ${
+                                              isFullyCaught
+                                                ? 'bg-[#0f2d21] hover:bg-[#143d2c] border-l-emerald-400 [.light_&]:bg-emerald-500/15 [.light_&]:hover:bg-emerald-500/25 [.light_&]:border-l-emerald-500'
+                                                : 'bg-[#2d1212] hover:bg-[#3d1818] border-l-red-500 [.light_&]:bg-red-500/10 [.light_&]:hover:bg-red-500/20 [.light_&]:border-l-red-500'
+                                            }`}
+                                          >
+                                            {/* ID / Num */}
+                                            <td className="py-3 px-4 font-mono font-bold text-text-muted/65 select-none">
+                                              #{p.num}
+                                            </td>
+                                            {/* Sprite */}
+                                            <td className="py-1 px-4 text-center w-24 min-w-[96px]">
+                                              <div className="w-20 h-20 flex items-center justify-center relative mx-auto">
+                                                {getPokemonSpriteUrl(p) ? (
+                                                  <img
+                                                    src={getPokemonSpriteUrl(p)!}
+                                                    alt={p.name}
+                                                    referrerPolicy="no-referrer"
+                                                    className="w-20 h-20 object-contain z-10"
+                                                    onError={(e) => {
+                                                      const img = e.currentTarget;
+                                                      if (!img.getAttribute('data-tried-fallback')) {
+                                                        img.setAttribute('data-tried-fallback', 'true');
+                                                        const currentSrc = img.src;
+                                                        const parts = currentSrc.split('/');
+                                                        const lastPart = parts[parts.length - 1];
+                                                        
+                                                        const strippedPart = lastPart.replace(/^0+([1-9]\d*|0)/, '$1');
+                                                        
+                                                        if (strippedPart !== lastPart) {
+                                                          parts[parts.length - 1] = strippedPart;
+                                                          img.src = parts.join('/');
+                                                          return;
+                                                        }
                                                       }
-                                                    }
-                                                    
-                                                    // Ultimate fallback: hide image and show fallback-icon
-                                                    img.style.display = 'none';
-                                                    const parent = img.parentElement;
-                                                    if (parent) {
-                                                      const fallback = parent.querySelector('.fallback-icon');
-                                                      if (fallback) fallback.classList.remove('hidden');
-                                                    }
-                                                  }}
-                                                />
-                                              ) : null}
-                                              <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p) ? 'hidden' : ''}`}>
-                                                <svg className="w-7 h-7 text-text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                  <circle cx="12" cy="12" r="10" />
-                                                  <line x1="2" y1="12" x2="22" y2="12" />
-                                                  <circle cx="12" cy="12" r="3" fill="currentColor" className="text-bg-surface-low" />
-                                                </svg>
+                                                      
+                                                      img.style.display = 'none';
+                                                      const parent = img.parentElement;
+                                                      if (parent) {
+                                                        const fallback = parent.querySelector('.fallback-icon');
+                                                        if (fallback) fallback.classList.remove('hidden');
+                                                      }
+                                                    }}
+                                                  />
+                                                ) : null}
+                                                <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p) ? 'hidden' : ''}`}>
+                                                  <svg className="w-7 h-7 text-text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <circle cx="12" cy="12" r="10" />
+                                                    <line x1="2" y1="12" x2="22" y2="12" />
+                                                    <circle cx="12" cy="12" r="3" fill="currentColor" className="text-bg-surface-low" />
+                                                  </svg>
+                                                </div>
                                               </div>
+                                            </td>
+                                            {/* Name */}
+                                            <td className={`py-3 px-4 font-semibold text-sm transition-colors ${
+                                              isFullyCaught
+                                                ? 'text-emerald-400 font-bold [.light_&]:text-emerald-800'
+                                                : 'text-red-400 font-bold [.light_&]:text-red-800'
+                                            }`}>
+                                              {p.name}
+                                            </td>
+                                            {/* Legendário/Mítico Column */}
+                                            <td className="py-3 px-4 text-center w-16">
+                                              <div className="flex items-center justify-center min-h-[24px]">
+                                                {p.isLegendary && (
+                                                  <div className="w-6 h-6 rounded-full bg-amber-500/15 border border-amber-500 text-amber-500 font-black flex items-center justify-center text-[10px] shadow-[0_0_8px_rgba(245,158,11,0.25)] select-none shrink-0" title="Lendário">
+                                                    L
+                                                  </div>
+                                                )}
+                                                {p.isMythical && (
+                                                  <div className="w-6 h-6 rounded-full bg-purple-500/15 border border-purple-500 text-purple-500 font-black flex items-center justify-center text-[10px] shadow-[0_0_8px_rgba(168,85,247,0.25)] select-none shrink-0" title="Mítico">
+                                                    M
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                            {/* Tipo Column */}
+                                            <td className="py-3 px-4 text-center w-28">
+                                              <div className="flex items-center justify-center gap-1.5 min-h-[24px]">
+                                                {p.type1 && (
+                                                  <img
+                                                    src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${p.type1.toLowerCase()}.png`}
+                                                    alt={p.type1}
+                                                    title={p.type1}
+                                                    referrerPolicy="no-referrer"
+                                                    className="w-6 h-6 object-contain shrink-0 animate-fade-in"
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                  />
+                                                )}
+                                                {p.type2 && (
+                                                  <img
+                                                    src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${p.type2.toLowerCase()}.png`}
+                                                    alt={p.type2}
+                                                    title={p.type2}
+                                                    referrerPolicy="no-referrer"
+                                                    className="w-6 h-6 object-contain shrink-0 animate-fade-in"
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                  />
+                                                )}
+                                              </div>
+                                            </td>
+                                            {/* Male Catch Checkbox */}
+                                            <td className="py-3 px-4 text-center">
+                                              <div className="flex justify-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'male')}
+                                                  disabled={!p.hasMale}
+                                                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                    !p.hasMale
+                                                      ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
+                                                      : p.isMaleCaught
+                                                      ? 'bg-blue-600/90 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.55)] hover:scale-105 active:scale-95'
+                                                      : 'border-blue-500/35 bg-blue-500/5 hover:bg-blue-500/20 hover:border-blue-400/80 text-blue-400/60 hover:scale-105 active:scale-95'
+                                                  }`}
+                                                  title={p.hasMale ? (p.isMaleCaught ? 'Marcado como pego (Masculino)' : 'Marcar como pego (Masculino)') : 'Gênero indisponível'}
+                                                >
+                                                  {p.hasMale ? (
+                                                    <>
+                                                      <svg className={`w-4.5 h-4.5 transition-colors ${p.isMaleCaught ? 'text-white' : 'text-blue-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isMaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
+                                                        <circle cx="10" cy="14" r="5" />
+                                                        <path d="M15 9l5-5" />
+                                                        <path d="M16 4h4v4" />
+                                                      </svg>
+                                                      {p.isMaleCaught && (
+                                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                          <Check size={9} strokeWidth={4} />
+                                                        </div>
+                                                      )}
+                                                    </>
+                                                  ) : (
+                                                    <span className="text-neutral-700/40 text-xs">-</span>
+                                                  )}
+                                                </button>
+                                              </div>
+                                            </td>
+                                            {/* Female Catch Checkbox */}
+                                            <td className="py-3 px-4 text-center">
+                                              <div className="flex justify-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'female')}
+                                                  disabled={!p.hasFemale}
+                                                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                    !p.hasFemale
+                                                      ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
+                                                      : p.isFemaleCaught
+                                                      ? 'bg-pink-600/90 border-pink-400 text-white shadow-[0_0_12px_rgba(236,72,153,0.55)] hover:scale-105 active:scale-95'
+                                                      : 'border-pink-500/35 bg-pink-500/5 hover:bg-pink-500/20 hover:border-pink-400/80 text-pink-400/60 hover:scale-105 active:scale-95'
+                                                  }`}
+                                                  title={p.hasFemale ? (p.isFemaleCaught ? 'Marcado como pego (Feminino)' : 'Marcar como pego (Feminino)') : 'Gênero indisponível'}
+                                                >
+                                                  {p.hasFemale ? (
+                                                    <>
+                                                      <svg className={`w-4.5 h-4.5 transition-colors ${p.isFemaleCaught ? 'text-white' : 'text-pink-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isFemaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
+                                                        <circle cx="12" cy="9" r="5" />
+                                                        <path d="M12 14v7" />
+                                                        <path d="M9 18h6" />
+                                                      </svg>
+                                                      {p.isFemaleCaught && (
+                                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                          <Check size={9} strokeWidth={4} />
+                                                        </div>
+                                                      )}
+                                                    </>
+                                                  ) : (
+                                                    <span className="text-neutral-700/40 text-xs">-</span>
+                                                  )}
+                                                </button>
+                                              </div>
+                                            </td>
+                                            {/* Genderless Catch Checkbox */}
+                                            <td className="py-3 px-4 text-center">
+                                              <div className="flex justify-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'genderless')}
+                                                  disabled={!p.hasGenderless}
+                                                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                    !p.hasGenderless
+                                                      ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
+                                                      : p.isGenderlessCaught
+                                                      ? 'bg-purple-600/90 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.55)] hover:scale-105 active:scale-95'
+                                                      : 'border-purple-500/35 bg-purple-500/5 hover:bg-purple-500/20 hover:border-purple-400/80 text-purple-400/60 hover:scale-105 active:scale-95'
+                                                  }`}
+                                                  title={p.hasGenderless ? (p.isGenderlessCaught ? 'Marcado como pego (Sem Gênero)' : 'Marcar como pego (Sem Gênero)') : 'Disponível apenas para espécies sem gênero'}
+                                                >
+                                                  {p.hasGenderless ? (
+                                                    <>
+                                                      <svg className={`w-4.5 h-4.5 transition-colors ${p.isGenderlessCaught ? 'text-white' : 'text-purple-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isGenderlessCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
+                                                        <circle cx="12" cy="12" r="6" />
+                                                        <circle cx="12" cy="12" r="2" />
+                                                      </svg>
+                                                      {p.isGenderlessCaught && (
+                                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                          <Check size={9} strokeWidth={4} />
+                                                        </div>
+                                                      )}
+                                                    </>
+                                                  ) : (
+                                                    <span className="text-neutral-700/40 text-xs">-</span>
+                                                  )}
+                                                </button>
+                                              </div>
+                                            </td>
+                                            {/* Actions */}
+                                            <td className="py-3 px-4 text-center">
+                                              <div className="flex items-center justify-center gap-1.5">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleMovePokemon(gen.id, p.id, 'up')}
+                                                  disabled={pIdx === 0}
+                                                  className={`text-text-muted hover:text-white transition-all flex items-center justify-center w-6 h-6 bg-bg-surface-med/15 hover:bg-bg-surface-med/40 rounded-lg cursor-pointer border border-outline-variant/15 hover:border-outline-variant/30 ${
+                                                    pIdx === 0 ? 'pointer-events-none opacity-25' : 'opacity-100'
+                                                  }`}
+                                                  title="Mover para Cima"
+                                                >
+                                                  <ArrowUp size={12} />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleMovePokemon(gen.id, p.id, 'down')}
+                                                  disabled={pIdx === filteredPokemons.length - 1}
+                                                  className={`text-text-muted hover:text-white transition-all flex items-center justify-center w-6 h-6 bg-bg-surface-med/15 hover:bg-bg-surface-med/40 rounded-lg cursor-pointer border border-outline-variant/15 hover:border-outline-variant/30 ${
+                                                    pIdx === filteredPokemons.length - 1 ? 'pointer-events-none opacity-25' : 'opacity-100'
+                                                  }`}
+                                                  title="Mover para Baixo"
+                                                >
+                                                  <ArrowDown size={12} />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleStartEditPokemon(gen.id, p)}
+                                                  className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-all flex items-center justify-center w-6 h-6 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg cursor-pointer border border-blue-500/15 hover:border-blue-500/30"
+                                                  title="Editar Pokémon"
+                                                >
+                                                  <Edit2 size={12} />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleDeletePokemon(gen.id, p.id, p.name)}
+                                                  className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-all flex items-center justify-center w-6 h-6 bg-red-500/10 hover:bg-red-500/20 rounded-lg cursor-pointer border border-red-500/15 hover:border-red-500/30"
+                                                  title="Remover Pokémon"
+                                                >
+                                                  <Trash2 size={12} />
+                                                </button>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {/* Mobile Cards List (Scroll-free presentation) */}
+                                <div className="block md:hidden space-y-4">
+                                  {filteredPokemons.map((p, pIdx) => {
+                                    const isFullyCaught = p.isExtraForm || (
+                                                          ((!p.hasMale || p.isMaleCaught) &&
+                                                          (!p.hasFemale || p.isFemaleCaught) &&
+                                                          (!p.hasGenderless || p.isGenderlessCaught))
+                                                        );
+                                    return (
+                                      <div
+                                        key={p.id}
+                                        className={`p-4 rounded-2xl border transition-all flex flex-col gap-3.5 relative ${
+                                          isFullyCaught
+                                            ? 'bg-[#0f2d21] border-emerald-500/30 [.light_&]:bg-emerald-500/10 [.light_&]:border-emerald-500/20'
+                                            : 'bg-[#1e0a0a] border-red-500/20 [.light_&]:bg-red-500/5 [.light_&]:border-red-500/10'
+                                        }`}
+                                      >
+                                        {/* Header Row: #Num, Name, and Badges (L, M) */}
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-[10px] font-mono font-bold text-text-muted/65 select-none">#{p.num}</span>
+                                            <span className={`font-bold text-sm ${
+                                              isFullyCaught
+                                                ? 'text-emerald-400 [.light_&]:text-emerald-800'
+                                                : 'text-red-400 [.light_&]:text-red-800'
+                                            }`}>
+                                              {p.name}
+                                            </span>
+                                            {p.isLegendary && (
+                                              <span className="w-5 h-5 rounded-full bg-amber-500/15 border border-amber-500 text-amber-500 font-black flex items-center justify-center text-[9px] shadow-[0_0_8px_rgba(245,158,11,0.25)] select-none shrink-0" title="Lendário">L</span>
+                                            )}
+                                            {p.isMythical && (
+                                              <span className="w-5 h-5 rounded-full bg-purple-500/15 border border-purple-500 text-purple-500 font-black flex items-center justify-center text-[9px] shadow-[0_0_8px_rgba(168,85,247,0.25)] select-none shrink-0" title="Mítico">M</span>
+                                            )}
+                                          </div>
+
+                                          {/* Types */}
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            {p.type1 && (
+                                              <img
+                                                src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${p.type1.toLowerCase()}.png`}
+                                                alt={p.type1}
+                                                title={p.type1}
+                                                referrerPolicy="no-referrer"
+                                                className="w-5 h-5 object-contain"
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                              />
+                                            )}
+                                            {p.type2 && (
+                                              <img
+                                                src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${p.type2.toLowerCase()}.png`}
+                                                alt={p.type2}
+                                                title={p.type2}
+                                                referrerPolicy="no-referrer"
+                                                className="w-5 h-5 object-contain"
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                              />
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Mid Row: Sprite and Checkboxes */}
+                                        <div className="flex items-center gap-4">
+                                          {/* Sprite */}
+                                          <div className="w-16 h-16 flex items-center justify-center shrink-0 relative">
+                                            {getPokemonSpriteUrl(p) ? (
+                                              <img
+                                                src={getPokemonSpriteUrl(p)!}
+                                                alt={p.name}
+                                                referrerPolicy="no-referrer"
+                                                className="w-16 h-16 object-contain z-10 animate-fade-in"
+                                                onError={(e) => {
+                                                  const img = e.currentTarget;
+                                                  img.style.display = 'none';
+                                                  const parent = img.parentElement;
+                                                  if (parent) {
+                                                    const fallback = parent.querySelector('.fallback-icon');
+                                                    if (fallback) fallback.classList.remove('hidden');
+                                                  }
+                                                }}
+                                              />
+                                            ) : null}
+                                            <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p) ? 'hidden' : ''}`}>
+                                              <svg className="w-5 h-5 text-text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                <circle cx="12" cy="12" r="10" />
+                                                <line x1="2" y1="12" x2="22" y2="12" />
+                                              </svg>
                                             </div>
-                                          </td>
-                                          {/* Name */}
-                                          <td className={`py-3 px-4 font-semibold text-sm transition-colors ${
-                                            isFullyCaught
-                                              ? 'text-emerald-400 font-bold [.light_&]:text-emerald-800'
-                                              : 'text-red-400 font-bold [.light_&]:text-red-800'
-                                          }`}>
-                                            {p.name}
-                                          </td>
-                                          {/* Legendário/Mítico Column */}
-                                          <td className="py-3 px-4 text-center w-16">
-                                            <div className="flex items-center justify-center min-h-[24px]">
-                                              {p.isLegendary && (
-                                                <div className="w-6 h-6 rounded-full bg-amber-500/15 border border-amber-500 text-amber-500 font-black flex items-center justify-center text-[10px] shadow-[0_0_8px_rgba(245,158,11,0.25)] select-none shrink-0" title="Lendário">
-                                                  L
+                                          </div>
+
+                                          {/* Catch States Buttons */}
+                                          <div className="flex-1 grid grid-cols-3 gap-1.5">
+                                            {/* Male Catch */}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'male')}
+                                              disabled={!p.hasMale}
+                                              className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer select-none relative ${
+                                                !p.hasMale
+                                                  ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/10 opacity-15 cursor-not-allowed'
+                                                  : p.isMaleCaught
+                                                  ? 'bg-blue-600/90 border-blue-400 text-white shadow-[0_0_8px_rgba(59,130,246,0.4)] hover:scale-105 active:scale-95'
+                                                  : 'border-blue-500/25 bg-blue-500/5 text-blue-400/60 hover:scale-105 active:scale-95'
+                                              }`}
+                                              title={p.hasMale ? (p.isMaleCaught ? 'Marcado como pego (Masculino)' : 'Marcar como pego (Masculino)') : 'Indisponível'}
+                                            >
+                                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                <circle cx="10" cy="14" r="5" />
+                                                <path d="M15 9l5-5" />
+                                                <path d="M16 4h4v4" />
+                                              </svg>
+                                              <span className="text-[8px] font-black uppercase tracking-wider">Masc</span>
+                                              {p.isMaleCaught && (
+                                                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-sm">
+                                                  <Check size={8} strokeWidth={4} />
                                                 </div>
                                               )}
-                                              {p.isMythical && (
-                                                <div className="w-6 h-6 rounded-full bg-purple-500/15 border border-purple-500 text-purple-500 font-black flex items-center justify-center text-[10px] shadow-[0_0_8px_rgba(168,85,247,0.25)] select-none shrink-0" title="Mítico">
-                                                  M
+                                            </button>
+
+                                            {/* Female Catch */}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'female')}
+                                              disabled={!p.hasFemale}
+                                              className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer select-none relative ${
+                                                !p.hasFemale
+                                                  ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/10 opacity-15 cursor-not-allowed'
+                                                  : p.isFemaleCaught
+                                                  ? 'bg-pink-600/90 border-pink-400 text-white shadow-[0_0_8px_rgba(236,72,153,0.4)] hover:scale-105 active:scale-95'
+                                                  : 'border-pink-500/25 bg-pink-500/5 text-pink-400/60 hover:scale-105 active:scale-95'
+                                              }`}
+                                              title={p.hasFemale ? (p.isFemaleCaught ? 'Marcado como pego (Feminino)' : 'Marcar como pego (Feminino)') : 'Indisponível'}
+                                            >
+                                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                <circle cx="12" cy="9" r="5" />
+                                                <path d="M12 14v7" />
+                                                <path d="M9 18h6" />
+                                              </svg>
+                                              <span className="text-[8px] font-black uppercase tracking-wider">Fem</span>
+                                              {p.isFemaleCaught && (
+                                                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-sm">
+                                                  <Check size={8} strokeWidth={4} />
                                                 </div>
                                               )}
-                                            </div>
-                                          </td>
-                                          {/* Tipo Column */}
-                                          <td className="py-3 px-4 text-center w-28">
-                                            <div className="flex items-center justify-center gap-1.5 min-h-[24px]">
-                                              {p.type1 && (
-                                                <img
-                                                  src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${p.type1.toLowerCase()}.png`}
-                                                  alt={p.type1}
-                                                  title={p.type1}
-                                                  referrerPolicy="no-referrer"
-                                                  className="w-6 h-6 object-contain shrink-0 animate-fade-in"
-                                                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                />
+                                            </button>
+
+                                            {/* Genderless Catch */}
+                                            <button
+                                              type="button"
+                                              onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'genderless')}
+                                              disabled={!p.hasGenderless}
+                                              className={`py-2 px-1 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer select-none relative ${
+                                                !p.hasGenderless
+                                                  ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/10 opacity-15 cursor-not-allowed'
+                                                  : p.isGenderlessCaught
+                                                  ? 'bg-purple-600/90 border-purple-400 text-white shadow-[0_0_8px_rgba(168,85,247,0.4)] hover:scale-105 active:scale-95'
+                                                  : 'border-purple-500/25 bg-purple-500/5 text-purple-400/60 hover:scale-105 active:scale-95'
+                                              }`}
+                                              title={p.hasGenderless ? (p.isGenderlessCaught ? 'Marcado como pego (Sem Gênero)' : 'Marcar como pego (Sem Gênero)') : 'Indisponível'}
+                                            >
+                                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                <circle cx="12" cy="12" r="6" />
+                                                <circle cx="12" cy="12" r="2" />
+                                              </svg>
+                                              <span className="text-[8px] font-black uppercase tracking-wider">S/ Gên</span>
+                                              {p.isGenderlessCaught && (
+                                                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-sm">
+                                                  <Check size={8} strokeWidth={4} />
+                                                </div>
                                               )}
-                                              {p.type2 && (
-                                                <img
-                                                  src={`https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${p.type2.toLowerCase()}.png`}
-                                                  alt={p.type2}
-                                                  title={p.type2}
-                                                  referrerPolicy="no-referrer"
-                                                  className="w-6 h-6 object-contain shrink-0 animate-fade-in"
-                                                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                />
-                                              )}
-                                            </div>
-                                          </td>
-                                          {/* Male Catch Checkbox */}
-                                          <td className="py-3 px-4 text-center">
-                                            <div className="flex justify-center">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'male')}
-                                                disabled={!p.hasMale}
-                                                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
-                                                  !p.hasMale
-                                                    ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
-                                                    : p.isMaleCaught
-                                                    ? 'bg-blue-600/90 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.55)] hover:scale-105 active:scale-95'
-                                                    : 'border-blue-500/35 bg-blue-500/5 hover:bg-blue-500/20 hover:border-blue-400/80 text-blue-400/60 hover:scale-105 active:scale-95'
-                                                }`}
-                                                title={p.hasMale ? (p.isMaleCaught ? 'Marcado como pego (Masculino)' : 'Marcar como pego (Masculino)') : 'Gênero indisponível'}
-                                              >
-                                                {p.hasMale ? (
-                                                  <>
-                                                    <svg className={`w-4.5 h-4.5 transition-colors ${p.isMaleCaught ? 'text-white' : 'text-blue-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isMaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
-                                                      <circle cx="10" cy="14" r="5" />
-                                                      <path d="M15 9l5-5" />
-                                                      <path d="M16 4h4v4" />
-                                                    </svg>
-                                                    {p.isMaleCaught && (
-                                                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
-                                                        <Check size={9} strokeWidth={4} />
-                                                      </div>
-                                                    )}
-                                                  </>
-                                                ) : (
-                                                  <span className="text-neutral-700/40 text-xs">-</span>
-                                                )}
-                                              </button>
-                                            </div>
-                                          </td>
-                                          {/* Female Catch Checkbox */}
-                                          <td className="py-3 px-4 text-center">
-                                            <div className="flex justify-center">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'female')}
-                                                disabled={!p.hasFemale}
-                                                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
-                                                  !p.hasFemale
-                                                    ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
-                                                    : p.isFemaleCaught
-                                                    ? 'bg-pink-600/90 border-pink-400 text-white shadow-[0_0_12px_rgba(236,72,153,0.55)] hover:scale-105 active:scale-95'
-                                                    : 'border-pink-500/35 bg-pink-500/5 hover:bg-pink-500/20 hover:border-pink-400/80 text-pink-400/60 hover:scale-105 active:scale-95'
-                                                }`}
-                                                title={p.hasFemale ? (p.isFemaleCaught ? 'Marcado como pego (Feminino)' : 'Marcar como pego (Feminino)') : 'Gênero indisponível'}
-                                              >
-                                                {p.hasFemale ? (
-                                                  <>
-                                                    <svg className={`w-4.5 h-4.5 transition-colors ${p.isFemaleCaught ? 'text-white' : 'text-pink-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isFemaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
-                                                      <circle cx="12" cy="9" r="5" />
-                                                      <path d="M12 14v7" />
-                                                      <path d="M9 18h6" />
-                                                    </svg>
-                                                    {p.isFemaleCaught && (
-                                                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
-                                                        <Check size={9} strokeWidth={4} />
-                                                      </div>
-                                                    )}
-                                                  </>
-                                                ) : (
-                                                  <span className="text-neutral-700/40 text-xs">-</span>
-                                                )}
-                                              </button>
-                                            </div>
-                                          </td>
-                                          {/* Genderless Catch Checkbox */}
-                                          <td className="py-3 px-4 text-center">
-                                            <div className="flex justify-center">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'genderless')}
-                                                disabled={!p.hasGenderless}
-                                                className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
-                                                  !p.hasGenderless
-                                                    ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
-                                                    : p.isGenderlessCaught
-                                                    ? 'bg-purple-600/90 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.55)] hover:scale-105 active:scale-95'
-                                                    : 'border-purple-500/35 bg-purple-500/5 hover:bg-purple-500/20 hover:border-purple-400/80 text-purple-400/60 hover:scale-105 active:scale-95'
-                                                }`}
-                                                title={p.hasGenderless ? (p.isGenderlessCaught ? 'Marcado como pego (Sem Gênero)' : 'Marcar como pego (Sem Gênero)') : 'Disponível apenas para espécies sem gênero'}
-                                              >
-                                                {p.hasGenderless ? (
-                                                  <>
-                                                    <svg className={`w-4.5 h-4.5 transition-colors ${p.isGenderlessCaught ? 'text-white' : 'text-purple-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isGenderlessCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
-                                                      <circle cx="12" cy="12" r="6" />
-                                                      <circle cx="12" cy="12" r="2" />
-                                                    </svg>
-                                                    {p.isGenderlessCaught && (
-                                                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
-                                                        <Check size={9} strokeWidth={4} />
-                                                      </div>
-                                                    )}
-                                                  </>
-                                                ) : (
-                                                  <span className="text-neutral-700/40 text-xs">-</span>
-                                                )}
-                                              </button>
-                                            </div>
-                                          </td>
-                                          {/* Actions */}
-                                          <td className="py-3 px-4 text-center">
-                                            <div className="flex items-center justify-center gap-1.5">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleMovePokemon(gen.id, p.id, 'up')}
-                                                disabled={pIdx === 0}
-                                                className={`text-text-muted hover:text-white transition-all flex items-center justify-center w-6 h-6 bg-bg-surface-med/15 hover:bg-bg-surface-med/40 rounded-lg cursor-pointer border border-outline-variant/15 hover:border-outline-variant/30 ${
-                                                  pIdx === 0 ? 'pointer-events-none opacity-25' : 'opacity-100'
-                                                }`}
-                                                title="Mover para Cima"
-                                              >
-                                                <ArrowUp size={12} />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleMovePokemon(gen.id, p.id, 'down')}
-                                                disabled={pIdx === filteredPokemons.length - 1}
-                                                className={`text-text-muted hover:text-white transition-all flex items-center justify-center w-6 h-6 bg-bg-surface-med/15 hover:bg-bg-surface-med/40 rounded-lg cursor-pointer border border-outline-variant/15 hover:border-outline-variant/30 ${
-                                                  pIdx === filteredPokemons.length - 1 ? 'pointer-events-none opacity-25' : 'opacity-100'
-                                                }`}
-                                                title="Mover para Baixo"
-                                              >
-                                                <ArrowDown size={12} />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleStartEditPokemon(gen.id, p)}
-                                                className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-all flex items-center justify-center w-6 h-6 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg cursor-pointer border border-blue-500/15 hover:border-blue-500/30"
-                                                title="Editar Pokémon"
-                                              >
-                                                <Edit2 size={12} />
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleDeletePokemon(gen.id, p.id, p.name)}
-                                                className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-all flex items-center justify-center w-6 h-6 bg-red-500/10 hover:bg-red-500/20 rounded-lg cursor-pointer border border-red-500/15 hover:border-red-500/30"
-                                                title="Remover Pokémon"
-                                              >
-                                                <Trash2 size={12} />
-                                              </button>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
+                                            </button>
+                                          </div>
+                                        </div>
+
+                                        {/* Actions Row */}
+                                        <div className="flex items-center justify-between pt-2 border-t border-outline-variant/15">
+                                          <div className="flex items-center gap-1.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleMovePokemon(gen.id, p.id, 'up')}
+                                              disabled={pIdx === 0}
+                                              className={`text-text-muted hover:text-white transition-all flex items-center justify-center w-7 h-7 bg-bg-surface-med/15 rounded-lg border border-outline-variant/15 ${
+                                                pIdx === 0 ? 'pointer-events-none opacity-20' : 'cursor-pointer'
+                                              }`}
+                                              title="Mover para Cima"
+                                            >
+                                              <ArrowUp size={12} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleMovePokemon(gen.id, p.id, 'down')}
+                                              disabled={pIdx === filteredPokemons.length - 1}
+                                              className={`text-text-muted hover:text-white transition-all flex items-center justify-center w-7 h-7 bg-bg-surface-med/15 rounded-lg border border-outline-variant/15 ${
+                                                pIdx === filteredPokemons.length - 1 ? 'pointer-events-none opacity-20' : 'cursor-pointer'
+                                              }`}
+                                              title="Mover para Baixo"
+                                            >
+                                              <ArrowDown size={12} />
+                                            </button>
+                                          </div>
+
+                                          <div className="flex items-center gap-1.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleStartEditPokemon(gen.id, p)}
+                                              className="text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 transition-all flex items-center justify-center w-7 h-7 bg-blue-500/10 rounded-lg cursor-pointer border border-blue-500/15 hover:border-blue-500/30"
+                                              title="Editar Pokémon"
+                                            >
+                                              <Edit2 size={12} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeletePokemon(gen.id, p.id, p.name)}
+                                              className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-all flex items-center justify-center w-7 h-7 bg-red-500/10 rounded-lg cursor-pointer border border-red-500/15 hover:border-red-500/30"
+                                              title="Remover Pokémon"
+                                            >
+                                              <Trash2 size={12} />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </>
                             )}
                           </div>
                         </motion.div>
@@ -2469,95 +2588,7 @@ export default function GamesScreen({
               )}
             </AnimatePresence>
 
-            {/* IMPORT POKEMON MODAL */}
-            <AnimatePresence>
-              {isImportModalOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                  {/* Backdrop */}
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setIsImportModalOpen(false)}
-                    className="fixed inset-0 bg-black/80 backdrop-blur-md"
-                  />
-                  
-                  {/* Container */}
-                  <motion.div
-                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
-                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
-                    className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-6 shadow-2xl max-w-xl w-full relative z-10 space-y-5 overflow-hidden text-left"
-                  >
-                    <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">
-                      <h3 className="font-display font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
-                        <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                        Importar Pokémon
-                      </h3>
-                      <button
-                        onClick={() => setIsImportModalOpen(false)}
-                        className="text-text-muted hover:text-white transition-all w-8 h-8 rounded-lg flex items-center justify-center hover:bg-bg-surface-med/40"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
 
-                    <form onSubmit={handleImportPokemons} className="space-y-4">
-                      {/* Generation Selector */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted font-display block">Geração Destino</label>
-                        <select
-                          value={importPokemonGenId}
-                          onChange={(e) => setImportPokemonGenId(e.target.value)}
-                          className="w-full bg-bg-surface-med/50 border border-outline-variant/30 focus:border-red-500 focus:outline-none rounded-xl px-3 py-2.5 text-xs text-white transition-all cursor-pointer"
-                        >
-                          {pokemonGenerations.map(gen => (
-                            <option key={gen.id} value={gen.id} className="bg-bg-surface-low text-white">
-                              {gen.name} ({genRegions[gen.id] || ''})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Raw Data Input */}
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black uppercase tracking-wider text-text-muted font-display block">Dados do Pokémon (Semicolon CSV)</label>
-                        <div className="text-[10px] text-text-muted/80 bg-bg-surface-med/20 p-2.5 rounded-xl border border-outline-variant/20 font-mono space-y-1 leading-relaxed">
-                          <p className="font-bold text-red-400">Formato exigido por linha:</p>
-                          <p className="text-white bg-black/30 px-1.5 py-0.5 rounded select-all inline-block">Nº;ID DO SPRITE;NOME;MASCULINO;FEMININO;SEM GÊNERO</p>
-                          <p className="mt-1"><span className="text-white">Exemplo:</span> 152;152;Chikorita;TRUE;TRUE;FALSE</p>
-                          <p>Os gêneros devem ser <span className="text-white">TRUE</span> ou <span className="text-white">FALSE</span> (ou VERDADEIRO/SIM/1).</p>
-                        </div>
-                        <textarea
-                          rows={10}
-                          placeholder="152;152;Chikorita;TRUE;TRUE;FALSE&#10;153;153;Bayleef;TRUE;TRUE;FALSE&#10;154;154;Meganium;TRUE;TRUE;FALSE"
-                          value={importRawData}
-                          onChange={(e) => setImportRawData(e.target.value)}
-                          className="w-full bg-bg-surface-med/50 border border-outline-variant/30 focus:border-red-500 focus:outline-none rounded-xl px-3 py-2.5 text-xs text-white transition-all font-mono resize-y min-h-[150px]"
-                        />
-                      </div>
-
-                      {/* Footer actions */}
-                      <div className="flex items-center gap-3 pt-3 border-t border-outline-variant/15">
-                        <button
-                          type="button"
-                          onClick={() => setIsImportModalOpen(false)}
-                          className="flex-1 py-2.5 bg-bg-surface-med/60 hover:bg-bg-surface-med border border-outline-variant/30 hover:border-outline-variant/50 text-white font-bold text-xs uppercase tracking-wider font-display rounded-xl transition-all cursor-pointer"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="submit"
-                          className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-wider font-display rounded-xl shadow-lg shadow-red-500/10 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Upload size={14} strokeWidth={2.5} /> Importar
-                        </button>
-                      </div>
-                    </form>
-                  </motion.div>
-                </div>
-              )}
-            </AnimatePresence>
 
             {/* Edit Pokémon Modal */}
             <AnimatePresence>

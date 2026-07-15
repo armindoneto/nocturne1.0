@@ -1155,7 +1155,7 @@ export default function EscalaScreen({
                         e.stopPropagation();
                         handleToggleHideTurno(turno.id);
                       }}
-                      className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted/40 hover:text-brand-primary hover:bg-brand-primary/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-all"
                       title={isHidden ? "Reexibir no seletor" : "Ocultar do seletor"}
                     >
                       {isHidden ? <Eye size={11} /> : <EyeOff size={11} />}
@@ -1168,7 +1168,7 @@ export default function EscalaScreen({
                         e.stopPropagation();
                         handleStartEditTurno(turno);
                       }}
-                      className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted/40 hover:text-brand-primary hover:bg-brand-primary/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-all"
                       title="Editar turno"
                     >
                       <Edit3 size={11} />
@@ -1181,7 +1181,7 @@ export default function EscalaScreen({
                         e.stopPropagation();
                         setTurnoToDelete(turno);
                       }}
-                      className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted/40 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      className="w-6 h-6 rounded-lg flex items-center justify-center text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
                       title="Excluir este turno"
                     >
                       <Trash2 size={11} />
