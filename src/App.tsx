@@ -43,6 +43,7 @@ import {
   GripVertical,
   Clock,
   Flame,
+  Cat,
   Zap,
   Settings,
   RefreshCw,
@@ -59,10 +60,12 @@ import {
   Motorbike,
   ScrollText,
   CalendarDays,
-  BookLock
+  BookLock,
+  Trophy,
+  Play
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry } from './types';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 export interface AppUser {
@@ -88,7 +91,40 @@ import ME4Screen from './components/ME4Screen';
 import NotesScreen from './components/NotesScreen';
 import EscalaScreen from './components/EscalaScreen';
 import TheListScreen from './components/TheListScreen';
+import GamesScreen from './components/GamesScreen';
 import { AppNote } from './types';
+import { parseRawGames } from './gamesSeed';
+import { RAW_POKEMON_GEN1_TSV } from './pokemonSeed';
+
+export function parseRawPokemonGen1(): PokemonEntry[] {
+  const lines = RAW_POKEMON_GEN1_TSV.split('\n');
+  return lines.map((line, idx) => {
+    const parts = line.split('\t');
+    const num = parts[0] || '001';
+    const id = parts[1] || num;
+    const name = parts[2] || 'Unknown';
+    const maleStr = parts[3] || '--';
+    const femaleStr = parts[4] || '--';
+    const genderlessStr = parts[5] || '--';
+
+    const hasMale = maleStr.trim().toUpperCase() === 'X';
+    const hasFemale = (femaleStr.trim().toUpperCase() === 'X' || femaleStr.trim().toUpperCase() === 'F');
+    const hasGenderless = genderlessStr.trim().toUpperCase() === 'X';
+
+    return {
+      id,
+      num,
+      name,
+      hasMale,
+      hasFemale,
+      hasGenderless,
+      isMaleCaught: false,
+      isFemaleCaught: false,
+      isGenderlessCaught: false
+    };
+  });
+}
+
 
 export const ACCOUNT_COLORS = [
   { value: 'brand-primary', label: 'Dourado', bgClass: 'bg-brand-primary' },
@@ -202,8 +238,76 @@ function AccountItem({ acc, onEdit, onDelete, onAddBalance, onSubBalance }: Acco
   );
 }
 
+let cachedFabSvg: string | null = null;
+const fabSvgListeners = new Set<(svg: string) => void>();
+
 const FABIcon = ({ size = 16, className = '' }: { size?: number, className?: string }) => {
-  return <Briefcase size={size} className={className} />;
+  const [svgContent, setSvgContent] = useState<string>(cachedFabSvg || '');
+
+  useEffect(() => {
+    if (cachedFabSvg) {
+      setSvgContent(cachedFabSvg);
+      return;
+    }
+
+    const listener = (svg: string) => setSvgContent(svg);
+    fabSvgListeners.add(listener);
+
+    if (fabSvgListeners.size === 1) {
+      fetch('/fab.svg')
+        .then(res => res.text())
+        .then(text => {
+          const cleaned = text
+            .replace(/width="[^"]*"/, 'width="100%"')
+            .replace(/height="[^"]*"/, 'height="100%"');
+          cachedFabSvg = cleaned;
+          fabSvgListeners.forEach(l => l(cleaned));
+          fabSvgListeners.clear();
+        })
+        .catch(err => {
+          console.error('Error loading fab.svg', err);
+          fabSvgListeners.clear();
+        });
+    }
+
+    return () => {
+      fabSvgListeners.delete(listener);
+    };
+  }, []);
+
+  if (!svgContent) {
+    return <Briefcase size={size} className={className} />;
+  }
+
+  return (
+    <div 
+      className={`inline-flex items-center justify-center shrink-0 ${className}`}
+      style={{ width: size, height: size }}
+      dangerouslySetInnerHTML={{ __html: svgContent }}
+    />
+  );
+};
+
+const PokebolaIcon = ({ size = 16, className = '' }: { size?: number, className?: string }) => {
+  return (
+    <svg 
+      xmlns="http://www.w3.org/2000/svg" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="2.5" 
+      strokeLinecap="round" 
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2.1 12h5.9" />
+      <path d="M16 12h5.9" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
 };
 
 export default function App() {
@@ -364,6 +468,8 @@ export default function App() {
   const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
   const [isWorkExpanded, setIsWorkExpanded] = useState(false);
   const [isFuelExpanded, setIsFuelExpanded] = useState(false);
+  const [isGamesExpanded, setIsGamesExpanded] = useState(false);
+  const [gamesSubmenu, setGamesSubmenu] = useState<'TROPHIES' | 'POKÉMON' | 'TO PLAY'>('TROPHIES');
   const [showMobileSubmenu, setShowMobileSubmenu] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountBalance, setNewAccountBalance] = useState('');
@@ -524,10 +630,10 @@ export default function App() {
   const [contrachequeMonth, setContrachequeMonth] = useState<string>(() => {
     const today = new Date();
     let year = today.getFullYear();
-    let month = today.getMonth() + 2; // subsequent month (+1 because 0-indexed, +1 because next)
-    if (month > 12) {
-      month = month - 12;
-      year += 1;
+    let month = today.getMonth(); // 0-indexed: 0 is Jan, which represents the previous month if we are in Feb (1). If we are in Jan (0), previous month is Dec (12) of prev year
+    if (month === 0) {
+      month = 12;
+      year -= 1;
     }
     const monthFormatted = month < 10 ? `0${month}` : `${month}`;
     return `${year}-${monthFormatted}`;
@@ -616,6 +722,97 @@ export default function App() {
     }
     return [];
   });
+
+  // --- Games / Trophy States ---
+  const [trophyEntries, setTrophyEntries] = useState<GameTrophyEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_trophy_entries');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as GameTrophyEntry[];
+        if (parsed && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (_) {}
+    }
+    const seeded = parseRawGames();
+    localStorage.setItem('nocturne_trophy_entries', JSON.stringify(seeded));
+    return seeded;
+  });
+
+  const [toPlayConsoles, setToPlayConsoles] = useState<ToPlayConsole[]>(() => {
+    const saved = localStorage.getItem('nocturne_toplay_consoles');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as ToPlayConsole[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
+  const [pokemonGenerations, setPokemonGenerations] = useState<PokemonGeneration[]>(() => {
+    const saved = localStorage.getItem('nocturne_pokemon_generations');
+    const freshGen1 = parseRawPokemonGen1();
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as PokemonGeneration[];
+        const oldGen1 = parsed.find(g => g.id === 'gen1');
+        if (oldGen1) {
+          // Always map status from old to fresh to guarantee correct IDs/structure
+          freshGen1.forEach(newP => {
+            const oldP = oldGen1.pokemons.find(op => 
+              op.id === newP.id ||
+              op.name === newP.name || 
+              op.num === newP.num && op.name.replace(' (F)', '') === newP.name.replace(' (F)', '') ||
+              op.id === `p1-${newP.num}` ||
+              op.id.includes(`-${newP.num}-`)
+            );
+            if (oldP) {
+              newP.isMaleCaught = !!oldP.isMaleCaught;
+              newP.isFemaleCaught = !!oldP.isFemaleCaught;
+              newP.isGenderlessCaught = !!oldP.isGenderlessCaught;
+              
+              // Preserve edited fields
+              if (oldP.name !== undefined) newP.name = oldP.name;
+              if (oldP.spriteId !== undefined) newP.spriteId = oldP.spriteId;
+              if (oldP.hasMale !== undefined) newP.hasMale = oldP.hasMale;
+              if (oldP.hasFemale !== undefined) newP.hasFemale = oldP.hasFemale;
+              if (oldP.hasGenderless !== undefined) newP.hasGenderless = oldP.hasGenderless;
+              if (oldP.type1 !== undefined) newP.type1 = oldP.type1;
+              if (oldP.type2 !== undefined) newP.type2 = oldP.type2;
+              if (oldP.isLegendary !== undefined) newP.isLegendary = oldP.isLegendary;
+              if (oldP.isMythical !== undefined) newP.isMythical = oldP.isMythical;
+              if (oldP.isExtraForm !== undefined) newP.isExtraForm = oldP.isExtraForm;
+            }
+          });
+
+          // Keep any custom added/imported Pokemons in Gen 1
+          const freshIds = new Set(freshGen1.map(p => p.id));
+          const customPokemons = oldGen1.pokemons.filter(op => !freshIds.has(op.id));
+          const mergedPokemons = [...freshGen1, ...customPokemons];
+
+          const index = parsed.findIndex(g => g.id === 'gen1');
+          if (index !== -1) {
+            parsed[index].pokemons = mergedPokemons;
+          }
+        } else {
+          parsed.push({ id: 'gen1', name: '1ª Geração', pokemons: freshGen1 });
+        }
+        return parsed;
+      } catch (_) {}
+    }
+    return [
+      { id: 'gen1', name: '1ª Geração', pokemons: freshGen1 },
+      { id: 'gen2', name: '2ª Geração', pokemons: [] },
+      { id: 'gen3', name: '3ª Geração', pokemons: [] },
+      { id: 'gen4', name: '4ª Geração', pokemons: [] },
+      { id: 'gen5', name: '5ª Geração', pokemons: [] },
+      { id: 'gen6', name: '6ª Geração', pokemons: [] },
+      { id: 'gen7', name: '7ª Geração', pokemons: [] },
+      { id: 'gen8', name: '8ª Geração', pokemons: [] },
+      { id: 'gen9', name: '9ª Geração', pokemons: [] }
+    ];
+  });
+
   const [theListYearCounts, setTheListYearCounts] = useState<Record<string, number>>(() => {
     const saved = localStorage.getItem('nocturne_thelist_year_counts');
     if (saved) {
@@ -809,6 +1006,18 @@ export default function App() {
   }, [theListEntries]);
 
   useEffect(() => {
+    localStorage.setItem('nocturne_trophy_entries', JSON.stringify(trophyEntries));
+  }, [trophyEntries]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_toplay_consoles', JSON.stringify(toPlayConsoles));
+  }, [toPlayConsoles]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_pokemon_generations', JSON.stringify(pokemonGenerations));
+  }, [pokemonGenerations]);
+
+  useEffect(() => {
     localStorage.setItem('nocturne_thelist_year_counts', JSON.stringify(theListYearCounts));
   }, [theListYearCounts]);
 
@@ -976,6 +1185,9 @@ export default function App() {
               escalaDays,
               theListEntries,
               theListYearCounts,
+              trophyEntries,
+              toPlayConsoles,
+              pokemonGenerations,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
@@ -1089,6 +1301,17 @@ export default function App() {
             if (data.theListYearCounts !== undefined) {
               setTheListYearCounts(data.theListYearCounts);
             }
+            if (data.trophyEntries !== undefined && data.trophyEntries.length > 0) {
+              setTrophyEntries(data.trophyEntries);
+            } else {
+              setTrophyEntries(parseRawGames());
+            }
+            if (data.toPlayConsoles !== undefined) {
+              setToPlayConsoles(data.toPlayConsoles);
+            }
+            if (data.pokemonGenerations !== undefined) {
+              setPokemonGenerations(data.pokemonGenerations);
+            }
             setFirestoreWriteError(null);
           }
           setDataLoadedFromFirestore(true);
@@ -1200,6 +1423,9 @@ export default function App() {
           escalaDays,
           theListEntries,
           theListYearCounts,
+          trophyEntries,
+          toPlayConsoles,
+          pokemonGenerations,
           didClearLegacyCards_v8: true,
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
@@ -1260,7 +1486,10 @@ export default function App() {
     escalaTurnos,
     escalaDays,
     theListEntries,
-    theListYearCounts
+    theListYearCounts,
+    trophyEntries,
+    toPlayConsoles,
+    pokemonGenerations
   ]);
 
   // One-time automatic migration to clean up duplicate cards in Firebase / LocalStorage
@@ -1413,6 +1642,9 @@ export default function App() {
           escalaDays,
           theListEntries,
           theListYearCounts,
+          trophyEntries,
+          toPlayConsoles,
+          pokemonGenerations,
           didClearLegacyCards_v8: true,
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
@@ -1452,6 +1684,7 @@ export default function App() {
       setMe4Highlights([]);
       setTheListEntries([]);
       setTheListYearCounts({});
+      setTrophyEntries(parseRawGames());
       setPatrimonyHistory([
         { id: 'pe-1', monthYear: '02/2026', amount: 48000.00 },
         { id: 'pe-2', monthYear: '03/2026', amount: 52500.00 },
@@ -2237,7 +2470,10 @@ export default function App() {
         'nocturne_escala_turnos',
         'nocturne_escala_days',
         'nocturne_thelist_entries',
-        'nocturne_thelist_year_counts'
+        'nocturne_thelist_year_counts',
+        'nocturne_trophy_entries',
+        'nocturne_toplay_consoles',
+        'nocturne_pokemon_generations'
       ];
       
       keysToBackup.forEach(key => {
@@ -2296,7 +2532,10 @@ export default function App() {
           'nocturne_escala_turnos',
           'nocturne_escala_days',
           'nocturne_thelist_entries',
-          'nocturne_thelist_year_counts'
+          'nocturne_thelist_year_counts',
+          'nocturne_trophy_entries',
+          'nocturne_toplay_consoles',
+          'nocturne_pokemon_generations'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -2354,6 +2593,9 @@ export default function App() {
         if (backupData['nocturne_escala_days']) setEscalaDays(JSON.parse(backupData['nocturne_escala_days']!));
         if (backupData['nocturne_thelist_entries']) setTheListEntries(JSON.parse(backupData['nocturne_thelist_entries']!));
         if (backupData['nocturne_thelist_year_counts']) setTheListYearCounts(JSON.parse(backupData['nocturne_thelist_year_counts']!));
+        if (backupData['nocturne_trophy_entries']) setTrophyEntries(JSON.parse(backupData['nocturne_trophy_entries']!));
+        if (backupData['nocturne_toplay_consoles']) setToPlayConsoles(JSON.parse(backupData['nocturne_toplay_consoles']!));
+        if (backupData['nocturne_pokemon_generations']) setPokemonGenerations(JSON.parse(backupData['nocturne_pokemon_generations']!));
         
         if (firebaseUser && firebaseUser.uid !== 'local-user') {
           setDataLoadedFromFirestore(true);
@@ -2388,6 +2630,10 @@ export default function App() {
             const parsedEscalaDays = backupData['nocturne_escala_days'] ? JSON.parse(backupData['nocturne_escala_days']!) : escalaDays;
             const parsedTheListEntries = backupData['nocturne_thelist_entries'] ? JSON.parse(backupData['nocturne_thelist_entries']!) : theListEntries;
             const parsedTheListYearCounts = backupData['nocturne_thelist_year_counts'] ? JSON.parse(backupData['nocturne_thelist_year_counts']!) : theListYearCounts;
+            const parsedTrophyEntriesRaw = backupData['nocturne_trophy_entries'] ? JSON.parse(backupData['nocturne_trophy_entries']!) : [];
+            const parsedTrophyEntries = (parsedTrophyEntriesRaw && parsedTrophyEntriesRaw.length > 0) ? parsedTrophyEntriesRaw : (trophyEntries.length > 0 ? trophyEntries : parseRawGames());
+            const parsedToPlayConsoles = backupData['nocturne_toplay_consoles'] ? JSON.parse(backupData['nocturne_toplay_consoles']!) : toPlayConsoles;
+            const parsedPokemonGenerations = backupData['nocturne_pokemon_generations'] ? JSON.parse(backupData['nocturne_pokemon_generations']!) : pokemonGenerations;
  
             const dataToSave = {
               user: parsedUser,
@@ -2416,6 +2662,9 @@ export default function App() {
               escalaDays: parsedEscalaDays,
               theListEntries: parsedTheListEntries,
               theListYearCounts: parsedTheListYearCounts,
+              trophyEntries: parsedTrophyEntries,
+              toPlayConsoles: parsedToPlayConsoles,
+              pokemonGenerations: parsedPokemonGenerations,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
@@ -2498,6 +2747,9 @@ export default function App() {
         escalaDays,
         theListEntries,
         theListYearCounts,
+        trophyEntries,
+        toPlayConsoles,
+        pokemonGenerations,
         didClearLegacyCards_v8: true,
         didClearLegacyCards_v9: true,
         didClearLegacyCards_v10: true
@@ -2717,9 +2969,6 @@ create policy "Users can update own data" on public.nocturne_data
               referrerPolicy="no-referrer"
               id="brand-emblem-img"
             />
-            <span className="text-[10px] text-brand-primary font-mono tracking-widest font-black uppercase">
-              Supabase Cloud
-            </span>
             <h1 className="text-3xl font-display font-black text-white tracking-tight">
               Nocturne
             </h1>
@@ -2786,7 +3035,7 @@ create policy "Users can update own data" on public.nocturne_data
       
       {/* Elegant Desktop Sidebar */}
       <aside 
-        className="hidden md:flex flex-col w-60 bg-zinc-950 border-r border-outline-variant/20 p-5 shrink-0 justify-between h-full relative select-none"
+        className="hidden md:flex flex-col w-60 bg-zinc-950 border-r border-outline-variant/20 p-5 shrink-0 justify-between h-full overflow-y-auto custom-scrollbar relative select-none"
         id="desktop-sidebar"
       >
         <div className="space-y-8">
@@ -3068,23 +3317,94 @@ create policy "Users can update own data" on public.nocturne_data
               </AnimatePresence>
             </div>
 
-            {/* GAMES MODULE */}
-            <button
-              type="button"
-              onClick={() => {
-                setActiveScreen('games');
-                setActiveModule('games');
-              }}
-              className={`w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
-                activeModule === 'games'
-                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
-                  : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
-              }`}
-              id="btn-sidebar-module-games"
-            >
-              <Gamepad2 size={16} />
-              <span>GAMES</span>
-            </button>
+            {/* GAMES MODULE (Collapsible) */}
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsGamesExpanded(!isGamesExpanded);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                  activeModule === 'games'
+                    ? 'bg-brand-primary/10 text-brand-primary border-brand-primary/10'
+                    : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
+                }`}
+                id="btn-sidebar-module-games"
+              >
+                <div className="flex items-center gap-3">
+                  <Gamepad2 size={16} />
+                  <span>GAMES</span>
+                </div>
+                {isGamesExpanded ? <ChevronUp size={14} className="text-text-muted" /> : <ChevronDown size={14} className="text-text-muted" />}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {isGamesExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden pl-4 space-y-1"
+                    id="games-submenu-container"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('games');
+                        setActiveModule('games');
+                        setGamesSubmenu('TROPHIES');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'games' && gamesSubmenu === 'TROPHIES'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-games-trophies"
+                    >
+                      <Trophy size={14} />
+                      <span>TROPHIES</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('games');
+                        setActiveModule('games');
+                        setGamesSubmenu('POKÉMON');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'games' && gamesSubmenu === 'POKÉMON'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-games-pokemon"
+                    >
+                      <PokebolaIcon size={14} />
+                      <span>POKÉMON</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('games');
+                        setActiveModule('games');
+                        setGamesSubmenu('TO PLAY');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'games' && gamesSubmenu === 'TO PLAY'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-games-toplay"
+                    >
+                      <Play size={14} />
+                      <span>TO PLAY</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* SYSTEM MODULE */}
             <button
@@ -3195,7 +3515,7 @@ create policy "Users can update own data" on public.nocturne_data
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
-        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'escala' && activeScreen !== 'thelist' && (
+        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && (
           <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
             {/* Left section: Title */}
             <div className="flex-1 min-w-0">
@@ -4796,12 +5116,12 @@ create policy "Users can update own data" on public.nocturne_data
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Games</span>
                   </div>
-                  <span className="text-white font-bold">v3.0.0</span>
+                  <span className="text-white font-bold">v3.1.0</span>
                 </li>
               </ul>
 
               <div className="text-center pt-3 border-t border-outline-variant/10 text-[11px] font-bold text-brand-primary select-none font-mono" id="system-info-developer-text">
-                2026 - v2.1.6 - Desenvolvido por Armindo Neto
+                2026 - v2.1.8 - Desenvolvido por Armindo Neto
               </div>
             </div>
           </motion.div>
@@ -5820,23 +6140,17 @@ create policy "Users can update own data" on public.nocturne_data
 
         {/* GAMES SCREEN */}
         {activeScreen === 'games' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center py-20 text-center"
-            id="games-screen-view"
-          >
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-10 max-w-md w-full shadow-2xl space-y-6 flex flex-col items-center">
-              <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center border border-brand-primary/20 gold-glow">
-                <Gamepad2 size={32} className="text-brand-primary animate-pulse" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-xl font-display font-black text-white uppercase tracking-wider">MÓDULO GAMES</h3>
-                <p className="text-sm font-semibold text-text-high">Módulo em desenvolvimento.</p>
-                <p className="text-xs text-text-muted">Em breve você terá acesso a todas as funcionalidades deste espaço.</p>
-              </div>
-            </div>
-          </motion.div>
+          <GamesScreen
+            trophyEntries={trophyEntries}
+            setTrophyEntries={setTrophyEntries}
+            toPlayConsoles={toPlayConsoles}
+            setToPlayConsoles={setToPlayConsoles}
+            pokemonGenerations={pokemonGenerations}
+            setPokemonGenerations={setPokemonGenerations}
+            triggerToast={triggerToast}
+            activeSubmenu={gamesSubmenu}
+            setActiveSubmenu={setGamesSubmenu}
+          />
         )}
 
         {/* NOTES SCREEN */}
@@ -6060,6 +6374,61 @@ create policy "Users can update own data" on public.nocturne_data
         )}
       </AnimatePresence>
 
+      {/* Mobile Submenu for GAMES module (only shown when activeModule === 'games' and showMobileSubmenu is true on mobile) */}
+      <AnimatePresence>
+        {activeModule === 'games' && showMobileSubmenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 15 }}
+            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            id="mobile-games-subnav"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('games');
+                setGamesSubmenu('TROPHIES');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'games' && gamesSubmenu === 'TROPHIES' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-games-trophies"
+            >
+              <Trophy size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">TROPHIES</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('games');
+                setGamesSubmenu('POKÉMON');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'games' && gamesSubmenu === 'POKÉMON' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-games-pokemon"
+            >
+              <PokebolaIcon size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">POKÉMON</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('games');
+                setGamesSubmenu('TO PLAY');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'games' && gamesSubmenu === 'TO PLAY' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-games-toplay"
+            >
+              <Play size={16} />
+              <span className="text-[9px] font-black tracking-widest uppercase font-display">TO PLAY</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Fixed bottom menu bar with active dynamic states */}
       <div 
         className="absolute bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-6 py-3.5 flex items-center justify-around md:hidden" 
@@ -6119,9 +6488,12 @@ create policy "Users can update own data" on public.nocturne_data
         <button
           type="button"
           onClick={() => {
-            setActiveModule('games');
-            setActiveScreen('games');
-            setShowMobileSubmenu(false);
+            if (activeModule === 'games') {
+              setShowMobileSubmenu(prev => !prev);
+            } else {
+              setActiveModule('games');
+              setShowMobileSubmenu(true);
+            }
           }}
           className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'games' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
           id="btn-nav-games"

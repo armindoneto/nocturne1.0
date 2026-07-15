@@ -167,8 +167,51 @@ export interface TheListEntry {
   note?: string;
 }
 
+export interface GameTrophyEntry {
+  id: string;
+  jogo: string;
+  platina: number;
+  ouro: number;
+  prata: number;
+  bronze: number;
+  platforms: ('PS3' | 'PSVita' | 'PS4' | 'PS5')[];
+  garapa: boolean;
+  hide: boolean;
+  dataPlatina?: string; // date YYYY-MM-DD
+}
 
+export interface ToPlayGame {
+  id: string;
+  name: string;
+}
 
+export interface ToPlayConsole {
+  id: string;
+  name: string;
+  games: ToPlayGame[];
+}
 
+export interface PokemonEntry {
+  id: string;
+  num: string;
+  name: string;
+  spriteId?: string;
+  hasMale: boolean;
+  hasFemale: boolean;
+  hasGenderless: boolean;
+  isMaleCaught?: boolean;
+  isFemaleCaught?: boolean;
+  isGenderlessCaught?: boolean;
+  type1?: string;
+  type2?: string;
+  isLegendary?: boolean;
+  isMythical?: boolean;
+  isExtraForm?: boolean;
+}
 
+export interface PokemonGeneration {
+  id: string;
+  name: string;
+  pokemons: PokemonEntry[];
+}
 

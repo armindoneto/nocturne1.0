@@ -336,6 +336,19 @@ button {
   border-color: rgba(217, 119, 6, 0.3) !important;
 }
 
+/* Light mode contrast adjustments for Games module (Platina & Ouro) */
+.light .text-cyan-100,
+.light .text-cyan-200,
+.light .text-cyan-300 {
+  color: #0e7490 !important; /* Rich deep cyan-700 for high visibility */
+}
+
+.light .text-amber-100,
+.light .text-amber-200,
+.light .text-amber-300 {
+  color: #b45309 !important; /* Rich deep amber-700 for high visibility */
+}
+
 /* Specific Hex #ffe08b (Pastel Yellow) Light Mode Overrides */
 .light .text-\[\#ffe08b\] {
   color: #b45309 !important; /* High contrast amber-700 */
@@ -426,6 +439,17 @@ button {
 
 .light .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* Hide number input spinners (up/down arrows) */
+.no-spinners::-webkit-outer-spin-button,
+.no-spinners::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spinners {
+  -moz-appearance: textfield;
 }
 
 
