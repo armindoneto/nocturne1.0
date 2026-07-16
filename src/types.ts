@@ -215,3 +215,12 @@ export interface PokemonGeneration {
   pokemons: PokemonEntry[];
 }
 
+export interface SystemVersions {
+  finance: string;
+  work: string;
+  fuel: string;
+  games: string;
+  app: string;
+}
+
+

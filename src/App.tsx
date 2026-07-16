@@ -65,7 +65,7 @@ import {
   Play
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry } from './types';
+import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 export interface AppUser {
@@ -518,6 +518,39 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nocturne_active_plan_month', activePlanMonth);
   }, [activePlanMonth]);
+
+  // --- System Versions States ---
+  const [systemVersions, setSystemVersions] = useState<SystemVersions>(() => {
+    const saved = localStorage.getItem('nocturne_system_versions');
+    return saved ? JSON.parse(saved) : {
+      finance: 'v8.1.5',
+      work: 'v2.0.5',
+      fuel: 'v2.0.0',
+      games: 'v3.1.1',
+      app: 'v2.1.9'
+    };
+  });
+
+  const [isEditVersionsModalOpen, setIsEditVersionsModalOpen] = useState(false);
+  const [tempVersionFinance, setTempVersionFinance] = useState('');
+  const [tempVersionWork, setTempVersionWork] = useState('');
+  const [tempVersionFuel, setTempVersionFuel] = useState('');
+  const [tempVersionGames, setTempVersionGames] = useState('');
+  const [tempVersionApp, setTempVersionApp] = useState('');
+
+  useEffect(() => {
+    if (isEditVersionsModalOpen) {
+      setTempVersionFinance(systemVersions.finance);
+      setTempVersionWork(systemVersions.work);
+      setTempVersionFuel(systemVersions.fuel);
+      setTempVersionGames(systemVersions.games);
+      setTempVersionApp(systemVersions.app);
+    }
+  }, [isEditVersionsModalOpen, systemVersions]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_system_versions', JSON.stringify(systemVersions));
+  }, [systemVersions]);
 
   // --- Temporary Information Screen States ---
   const [tempCategories, setTempCategories] = useState<TempCategory[]>(() => {
@@ -1188,6 +1221,7 @@ export default function App() {
               trophyEntries,
               toPlayConsoles,
               pokemonGenerations,
+              systemVersions,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
@@ -1312,6 +1346,9 @@ export default function App() {
             if (data.pokemonGenerations !== undefined) {
               setPokemonGenerations(data.pokemonGenerations);
             }
+            if (data.systemVersions !== undefined) {
+              setSystemVersions(data.systemVersions);
+            }
             setFirestoreWriteError(null);
           }
           setDataLoadedFromFirestore(true);
@@ -1426,6 +1463,7 @@ export default function App() {
           trophyEntries,
           toPlayConsoles,
           pokemonGenerations,
+          systemVersions,
           didClearLegacyCards_v8: true,
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
@@ -1489,7 +1527,8 @@ export default function App() {
     theListYearCounts,
     trophyEntries,
     toPlayConsoles,
-    pokemonGenerations
+    pokemonGenerations,
+    systemVersions
   ]);
 
   // One-time automatic migration to clean up duplicate cards in Firebase / LocalStorage
@@ -1645,6 +1684,7 @@ export default function App() {
           trophyEntries,
           toPlayConsoles,
           pokemonGenerations,
+          systemVersions,
           didClearLegacyCards_v8: true,
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
@@ -2439,7 +2479,20 @@ export default function App() {
     setSelectedAdjustingAccount(null);
     setAdjustingType(null);
 
-    triggerToast(`${isAddition ? 'Depósito de' : 'Retirada de'} R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} concluído.`);
+    triggerToast(`${isAddition ? 'Depósito de' : 'Retirada de'} R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} concluído.`);
+  };
+
+  const handleSaveVersionsSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setSystemVersions({
+      finance: tempVersionFinance,
+      work: tempVersionWork,
+      fuel: tempVersionFuel,
+      games: tempVersionGames,
+      app: tempVersionApp
+    });
+    setIsEditVersionsModalOpen(false);
+    triggerToast('Versões do sistema atualizadas!');
   };
 
   const handleExportBackup = () => {
@@ -2473,7 +2526,8 @@ export default function App() {
         'nocturne_thelist_year_counts',
         'nocturne_trophy_entries',
         'nocturne_toplay_consoles',
-        'nocturne_pokemon_generations'
+        'nocturne_pokemon_generations',
+        'nocturne_system_versions'
       ];
       
       keysToBackup.forEach(key => {
@@ -2535,7 +2589,8 @@ export default function App() {
           'nocturne_thelist_year_counts',
           'nocturne_trophy_entries',
           'nocturne_toplay_consoles',
-          'nocturne_pokemon_generations'
+          'nocturne_pokemon_generations',
+          'nocturne_system_versions'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -2596,6 +2651,7 @@ export default function App() {
         if (backupData['nocturne_trophy_entries']) setTrophyEntries(JSON.parse(backupData['nocturne_trophy_entries']!));
         if (backupData['nocturne_toplay_consoles']) setToPlayConsoles(JSON.parse(backupData['nocturne_toplay_consoles']!));
         if (backupData['nocturne_pokemon_generations']) setPokemonGenerations(JSON.parse(backupData['nocturne_pokemon_generations']!));
+        if (backupData['nocturne_system_versions']) setSystemVersions(JSON.parse(backupData['nocturne_system_versions']!));
         
         if (firebaseUser && firebaseUser.uid !== 'local-user') {
           setDataLoadedFromFirestore(true);
@@ -2634,6 +2690,7 @@ export default function App() {
             const parsedTrophyEntries = (parsedTrophyEntriesRaw && parsedTrophyEntriesRaw.length > 0) ? parsedTrophyEntriesRaw : (trophyEntries.length > 0 ? trophyEntries : parseRawGames());
             const parsedToPlayConsoles = backupData['nocturne_toplay_consoles'] ? JSON.parse(backupData['nocturne_toplay_consoles']!) : toPlayConsoles;
             const parsedPokemonGenerations = backupData['nocturne_pokemon_generations'] ? JSON.parse(backupData['nocturne_pokemon_generations']!) : pokemonGenerations;
+            const parsedSystemVersions = backupData['nocturne_system_versions'] ? JSON.parse(backupData['nocturne_system_versions']!) : systemVersions;
  
             const dataToSave = {
               user: parsedUser,
@@ -2665,6 +2722,7 @@ export default function App() {
               trophyEntries: parsedTrophyEntries,
               toPlayConsoles: parsedToPlayConsoles,
               pokemonGenerations: parsedPokemonGenerations,
+              systemVersions: parsedSystemVersions,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
@@ -2750,6 +2808,7 @@ export default function App() {
         trophyEntries,
         toPlayConsoles,
         pokemonGenerations,
+        systemVersions,
         didClearLegacyCards_v8: true,
         didClearLegacyCards_v9: true,
         didClearLegacyCards_v10: true
@@ -2796,7 +2855,7 @@ export default function App() {
 
   // Group transactions list by humanized dates
   const groupedTransactions = useMemo(() => {
-    const groups: { [key: string]: { txs: Transaction[]; dailySum: number } } = {};
+    const groups: { [key: string]: { txs: Transaction[]; dailySum: number; rawDate: string } } = {};
 
     filteredTransactions.forEach(t => {
       // Format header keys in dd/mm/aa format
@@ -2823,7 +2882,7 @@ export default function App() {
       }
 
       if (!groups[formattedHeader]) {
-        groups[formattedHeader] = { txs: [], dailySum: 0 };
+        groups[formattedHeader] = { txs: [], dailySum: 0, rawDate: t.date };
       }
 
       groups[formattedHeader].txs.push(t);
@@ -2833,8 +2892,9 @@ export default function App() {
     return Object.entries(groups).map(([date, data]) => ({
       dateLabel: date,
       transactions: data.txs,
-      dailySum: data.dailySum
-    }));
+      dailySum: data.dailySum,
+      rawDate: data.rawDate
+    })).sort((a, b) => b.rawDate.localeCompare(a.rawDate));
   }, [filteredTransactions]);
 
   // Dynamic dashboard analytics (cashflows graph values)
@@ -3620,7 +3680,7 @@ create policy "Users can update own data" on public.nocturne_data
                   <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
                     <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Total Recebido</span>
                     <span className="text-sm font-bold text-brand-primary font-mono">
-                      R$ {contrachequeTotalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {contrachequeTotalNet.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -3644,7 +3704,7 @@ create policy "Users can update own data" on public.nocturne_data
                 <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
                   <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
                   <span className="text-sm font-bold text-brand-primary font-mono">
-                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               )}
@@ -3700,7 +3760,7 @@ create policy "Users can update own data" on public.nocturne_data
                         <div>
                           <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Balanço Projetado</span>
                           <span className={`text-lg font-black font-mono tracking-tight block mt-1 ${analysisData.projectedBalance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            R$ {analysisData.projectedBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            R$ {analysisData.projectedBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>
@@ -3712,7 +3772,7 @@ create policy "Users can update own data" on public.nocturne_data
                         <div>
                           <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Média Diária</span>
                           <span className="text-lg font-black font-mono tracking-tight text-rose-400 block mt-1">
-                            R$ {analysisData.averageDailyExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            R$ {analysisData.averageDailyExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>
@@ -3724,7 +3784,7 @@ create policy "Users can update own data" on public.nocturne_data
                         <div>
                           <span className="text-[10px] uppercase tracking-wider text-text-muted font-bold block">Total de Gastos</span>
                           <span className="text-lg font-black font-mono tracking-tight text-white block mt-1">
-                            R$ {analysisData.totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            R$ {analysisData.totalExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
                       </div>
@@ -3798,11 +3858,11 @@ create policy "Users can update own data" on public.nocturne_data
                                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-text-muted font-mono">
                                       <div>
                                         Lim. Atribuído:{' '}
-                                        <strong className="text-white font-semibold">R$ {day.dailySaldoAtStart.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                        <strong className="text-white font-semibold">R$ {day.dailySaldoAtStart.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                       </div>
                                       <div>
                                         Despesas Reais:{' '}
-                                        <strong className="text-white font-semibold">R$ {day.dayExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                                        <strong className="text-white font-semibold">R$ {day.dayExpenses.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                                       </div>
                                     </div>
                                   </div>
@@ -3812,7 +3872,7 @@ create policy "Users can update own data" on public.nocturne_data
                                       Balanço:
                                     </span>
                                     <span className={`font-mono font-black tracking-tight text-xs ${isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                                      {isPositive ? '+' : ''} R$ {day.dailyNetBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      {isPositive ? '+' : ''} R$ {day.dailyNetBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                   </div>
                                 </div>
@@ -3859,7 +3919,7 @@ create policy "Users can update own data" on public.nocturne_data
                     <div>
                       <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Total em Contas</span>
                       <p className="text-lg font-bold text-white mt-1">
-                        R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
                     <div className="text-[10px] text-green-400 flex items-center gap-1 mt-2 font-mono">
@@ -3964,7 +4024,7 @@ create policy "Users can update own data" on public.nocturne_data
                           </div>
                           <div className="flex items-center gap-3">
                             <span className={`text-xs font-bold ${t.amount >= 0 ? 'text-green-500' : 'text-text-high'}`}>
-                              {t.amount >= 0 ? '+' : '-'} R$ {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              {t.amount >= 0 ? '+' : '-'} R$ {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                             <button
                               onClick={(e) => handleEditClick(t, e)}
@@ -4065,7 +4125,7 @@ create policy "Users can update own data" on public.nocturne_data
 
                 <div className="mt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-outline-variant/20 pt-3">
                   <span className="text-xs text-text-muted">
-                    Saldo Mensal: <strong className="text-text-high font-bold">R$ {(periodActive ? remainingTotalPeriodBudget : totalBalance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong>
+                    Saldo Mensal: <strong className="text-text-high font-bold">R$ {(periodActive ? remainingTotalPeriodBudget : totalBalance).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                   </span>
 
                   {periodActive && (
@@ -4103,7 +4163,7 @@ create policy "Users can update own data" on public.nocturne_data
                           <div key={acc.id} className="flex justify-between items-center border-b border-white/5 pb-2 last:border-0 last:pb-0">
                             <span className="text-text-muted font-sans font-medium">{acc.name}</span>
                             <span className="text-white font-bold">
-                              R$ {acc.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                              R$ {acc.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </span>
                           </div>
                         ))}
@@ -4137,7 +4197,7 @@ create policy "Users can update own data" on public.nocturne_data
                     <span>{group.dateLabel}</span>
                     <span className={group.dailySum >= 0 ? 'text-green-500' : 'text-text-high'}>
                       {group.dailySum >= 0 ? '+ R$ ' : '- R$ '}
-                      {Math.abs(group.dailySum).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      {Math.abs(group.dailySum).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </h3>
 
@@ -4162,7 +4222,7 @@ create policy "Users can update own data" on public.nocturne_data
                           <div className="flex items-center gap-3">
                             <div className="text-right">
                               <p className={`font-bold text-sm ${tx.amount >= 0 ? 'text-green-500' : 'text-text-high'}`}>
-                                {tx.amount >= 0 ? '+' : '-'} R$ {Math.abs(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                {tx.amount >= 0 ? '+' : '-'} R$ {Math.abs(tx.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </p>
                             </div>
 
@@ -4246,11 +4306,11 @@ create policy "Users can update own data" on public.nocturne_data
               <div className="space-y-2 text-xs font-mono">
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-text-muted font-sans font-medium">Faturas Totais em Aberto</span>
-                  <span className="text-white font-bold">R$ {cards.reduce((sum, c) => sum + c.used, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-white font-bold">R$ {cards.reduce((sum, c) => sum + c.used, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-text-muted font-sans font-medium">Limite Global Disponível</span>
-                  <span className="text-brand-primary font-bold">R$ {cards.reduce((sum, c) => sum + (c.limit - c.used), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-brand-primary font-bold">R$ {cards.reduce((sum, c) => sum + (c.limit - c.used), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>
@@ -4436,7 +4496,7 @@ create policy "Users can update own data" on public.nocturne_data
                                   color: '#ffffff'
                                 }} 
                                 labelClassName="text-text-muted font-bold"
-                                formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Patrimônio']}
+                                formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Patrimônio']}
                               />
                               <Line 
                                 type="monotone" 
@@ -4597,7 +4657,7 @@ create policy "Users can update own data" on public.nocturne_data
 
                               <div className="flex items-center gap-3">
                                 <span className="font-mono font-black text-xs text-white">
-                                  R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                                 <button
                                   type="button"
@@ -5086,7 +5146,13 @@ create policy "Users can update own data" on public.nocturne_data
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4 shadow-lg" id="config-system-info-box">
               <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
-                <span className="text-xs font-black text-white uppercase tracking-wider">Informações do Sistema</span>
+                <span 
+                  onClick={() => setIsEditVersionsModalOpen(true)} 
+                  className="text-xs font-black text-white uppercase tracking-wider cursor-default select-none"
+                  id="system-info-title-invisible-btn"
+                >
+                  Informações do Sistema
+                </span>
               </div>
               
               <ul className="space-y-2 font-mono text-[11px] leading-relaxed">
@@ -5095,33 +5161,33 @@ create policy "Users can update own data" on public.nocturne_data
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Finance</span>
                   </div>
-                  <span className="text-white font-bold">v8.1.5</span>
+                  <span className="text-white font-bold">{systemVersions.finance}</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Work</span>
                   </div>
-                  <span className="text-white font-bold">v2.0.5</span>
+                  <span className="text-white font-bold">{systemVersions.work}</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Fuel</span>
                   </div>
-                  <span className="text-white font-bold">v2.0.0</span>
+                  <span className="text-white font-bold">{systemVersions.fuel}</span>
                 </li>
                 <li className="flex items-center justify-between text-text-muted py-1">
                   <div className="flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Games</span>
                   </div>
-                  <span className="text-white font-bold">v3.1.1</span>
+                  <span className="text-white font-bold">{systemVersions.games}</span>
                 </li>
               </ul>
 
               <div className="text-center pt-3 border-t border-outline-variant/10 text-[11px] font-bold text-brand-primary select-none font-mono" id="system-info-developer-text">
-                2026 - v2.1.9 - Desenvolvido por Armindo Neto
+                2026 - {systemVersions.app} - Desenvolvido por Armindo Neto
               </div>
             </div>
           </motion.div>
@@ -5832,7 +5898,7 @@ create policy "Users can update own data" on public.nocturne_data
                                     {e.km.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} Km
                                   </td>
                                   <td className="py-3.5 px-2 text-center font-mono font-semibold text-white">
-                                    R$ {e.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    R$ {e.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </td>
                                   <td className="py-3.5 px-2 text-center font-mono text-text-muted">
                                     {e.qty.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} l
@@ -5890,7 +5956,7 @@ create policy "Users can update own data" on public.nocturne_data
                                 </div>
                                 <div className="text-right">
                                   <span className="text-[9px] uppercase tracking-wider text-text-muted font-bold block">Abastecido</span>
-                                  <span className="font-mono font-bold text-brand-primary">R$ {e.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                  <span className="font-mono font-bold text-brand-primary">R$ {e.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                                   <span className="text-[10px] text-text-muted block">({e.qty.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} l)</span>
                                 </div>
                                 <div>
@@ -7462,7 +7528,7 @@ create policy "Users can update own data" on public.nocturne_data
                             color: '#ffffff'
                           }} 
                           labelClassName="text-text-muted font-bold"
-                          formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Patrimônio']}
+                          formatter={(value: any) => [`R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Patrimônio']}
                         />
                         <Line 
                           type="monotone" 
@@ -7669,6 +7735,108 @@ create policy "Users can update own data" on public.nocturne_data
                   OK
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Editar Versões */}
+      <AnimatePresence>
+        {isEditVersionsModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm shadow-2xl" id="edit-versions-modal-overlay">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-sm bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-6 space-y-4 shadow-xl text-left"
+              id="edit-versions-modal-content"
+            >
+              <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3">
+                <SlidersHorizontal className="text-brand-primary" size={18} />
+                <h3 className="font-display font-black text-sm tracking-tight text-white uppercase">
+                  Alterar Versões
+                </h3>
+              </div>
+
+              <form onSubmit={handleSaveVersionsSubmit} className="space-y-4 pt-2">
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Módulo Finance</label>
+                  <input
+                    type="text"
+                    required
+                    value={tempVersionFinance}
+                    onChange={(e) => setTempVersionFinance(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                    id="inp-version-finance"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Módulo Work</label>
+                  <input
+                    type="text"
+                    required
+                    value={tempVersionWork}
+                    onChange={(e) => setTempVersionWork(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                    id="inp-version-work"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Módulo Fuel</label>
+                  <input
+                    type="text"
+                    required
+                    value={tempVersionFuel}
+                    onChange={(e) => setTempVersionFuel(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                    id="inp-version-fuel"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Módulo Games</label>
+                  <input
+                    type="text"
+                    required
+                    value={tempVersionGames}
+                    onChange={(e) => setTempVersionGames(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                    id="inp-version-games"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Versão do App</label>
+                  <input
+                    type="text"
+                    required
+                    value={tempVersionApp}
+                    onChange={(e) => setTempVersionApp(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                    id="inp-version-app"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-outline-variant/30">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditVersionsModalOpen(false)}
+                    className="text-text-muted hover:text-white font-extrabold uppercase text-[9px] tracking-widest py-2 px-4 transition-all cursor-pointer"
+                    id="btn-cancel-versions"
+                  >
+                    CANCELAR
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-brand-primary hover:bg-brand-primary/80 text-black font-extrabold uppercase text-[9px] tracking-widest py-2 px-6 rounded-lg transition-all cursor-pointer"
+                    id="btn-save-versions"
+                  >
+                    SALVAR
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

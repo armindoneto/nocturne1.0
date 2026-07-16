@@ -57,7 +57,7 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onPayBill, onAdjustLim
   };
 
   const handleLimitIncrease = () => {
-    const response = window.prompt(`Defina o novo limite para o cartão ${card.brand} (atual R$: ${card.limit.toLocaleString('pt-BR')}):`, card.limit.toString());
+    const response = window.prompt(`Defina o novo limite para o cartão ${card.brand} (atual R$: ${card.limit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}):`, card.limit.toString());
     if (response) {
       const parsed = parseFloat(response.replace(/[^\d]/g, ''));
       if (!isNaN(parsed) && parsed > 0) {
@@ -119,7 +119,7 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onPayBill, onAdjustLim
           <div className="text-right">
             <span className="text-[10px] text-text-muted uppercase tracking-wider block">Fatura Atual</span>
             <span className="text-text-high font-display font-black text-xl">
-              R$ {card.used.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              R$ {card.used.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
         </div>
@@ -128,7 +128,7 @@ export const CardItem: React.FC<CardItemProps> = ({ card, onPayBill, onAdjustLim
         <div className="mt-4 pt-4 border-t border-white/5 space-y-1.5">
           <div className="flex justify-between text-[11px] text-text-muted">
             <span>Limite Utilizado: <strong className="text-text-high">{percentUsed.toFixed(0)}%</strong></span>
-            <span>Total: <strong>R$ {card.limit.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}</strong></span>
+            <span>Total: <strong>R$ {card.limit.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></span>
           </div>
           <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
             <motion.div
