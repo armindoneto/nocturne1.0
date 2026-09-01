@@ -438,20 +438,25 @@ export default function TheListScreen({
                   <BookA className="text-brand-primary" size={16} />
                   <h3 className="text-xs font-black text-white uppercase tracking-wider font-display">Alfabeto</h3>
                 </div>
-                {/* Button FULL */}
-                <button
-                  type="button"
-                  onClick={() => setShowFullAlphabet(!showFullAlphabet)}
-                  className={`text-[9px] font-black uppercase px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
-                    showFullAlphabet 
-                      ? 'bg-brand-primary border-brand-primary text-black gold-glow'
-                      : 'bg-bg-surface-med border-outline-variant/30 text-text-muted hover:text-white'
-                  }`}
-                  title="Alterar para considerar todas as entradas (inclusive com P marcado)"
-                  id="btn-full-alphabet-filter"
-                >
-                  {showFullAlphabet ? 'FULL: Ativo' : 'FULL: Inativo'}
-                </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-mono text-text-muted font-bold" id="alphabet-total-count">
+                    Total: <strong className="text-brand-primary font-mono">{alphabetRelevantEntries.length}</strong>
+                  </span>
+                  {/* Button FULL */}
+                  <button
+                    type="button"
+                    onClick={() => setShowFullAlphabet(!showFullAlphabet)}
+                    className={`text-[9px] font-black uppercase px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                      showFullAlphabet 
+                        ? 'bg-brand-primary border-brand-primary text-black gold-glow'
+                        : 'bg-bg-surface-med border-outline-variant/30 text-text-muted hover:text-white'
+                    }`}
+                    title="Alterar para considerar todas as entradas (inclusive com P marcado)"
+                    id="btn-full-alphabet-filter"
+                  >
+                    {showFullAlphabet ? 'FULL: Ativo' : 'FULL: Inativo'}
+                  </button>
+                </div>
               </div>
               
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2" id="alphabet-grid">

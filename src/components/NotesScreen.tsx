@@ -127,7 +127,7 @@ export default function NotesScreen({ notes, setNotes, theme = 'dark' }: NotesSc
                   {/* Right Column: Delete Action */}
                   <button
                     onClick={() => handleDeleteNote(note.id)}
-                    className="p-1.5 rounded-lg text-text-muted hover:text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer shrink-0"
+                    className="p-1.5 rounded-lg text-text-muted hover:text-red-500 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all cursor-pointer shrink-0"
                     title="Excluir nota"
                     id={`btn-delete-note-${note.id}`}
                   >

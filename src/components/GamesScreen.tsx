@@ -21,8 +21,10 @@ import {
   Grid,
   ArrowUp,
   ArrowDown,
+  ArrowUpDown,
   Upload,
-  Filter
+  Filter,
+  Sparkles
 } from 'lucide-react';
 import { GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry } from '../types';
 import TrophiesDashboard from './TrophiesDashboard';
@@ -95,11 +97,12 @@ const validateAndStandardiseType = (typeStr: string): string | null => {
   return found || null;
 };
 
-function getPokemonSpriteUrl(pokemon: PokemonEntry): string | null {
+function getPokemonSpriteUrl(pokemon: PokemonEntry, isShiny: boolean = false): string | null {
   if (!pokemon) return null;
+  const prefix = isShiny ? 'shiny' : '';
   
   if (pokemon.spriteId) {
-    return `https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${pokemon.spriteId}.png`;
+    return `https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${prefix}${pokemon.spriteId}.png`;
   }
   
   const id = pokemon.id;
@@ -115,7 +118,7 @@ function getPokemonSpriteUrl(pokemon: PokemonEntry): string | null {
       fileName = match[1] + match[2];
     }
   }
-  return `https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${fileName}.png`;
+  return `https://raw.githubusercontent.com/armindoneto/nocturne/main/pokedex/${prefix}${fileName}.png`;
 }
 
 // Points required for a specific level L based on user points table
@@ -216,6 +219,64 @@ export default function GamesScreen({
   // Delete confirmation State
   const [gameToDelete, setGameToDelete] = useState<{ id: string; name: string } | null>(null);
 
+  // Reorder custom list State
+  const [reorderTargetGame, setReorderTargetGame] = useState<GameTrophyEntry | null>(null);
+  const [reorderSearchQuery, setReorderSearchQuery] = useState('');
+  const [isReorderModalOpen, setIsReorderModalOpen] = useState(false);
+
+  const handleReorderGame = (targetId: string, position: 'before' | 'after' | 'start' | 'end', referenceId?: string) => {
+    setTrophyEntries(prev => {
+      const list = [...prev];
+      const sourceIndex = list.findIndex(item => item.id === targetId);
+      if (sourceIndex === -1) return prev;
+      
+      const sourceItem = list[sourceIndex];
+      // Remove from old position
+      list.splice(sourceIndex, 1);
+      
+      if (position === 'start') {
+        list.unshift(sourceItem);
+      } else if (position === 'end') {
+        list.push(sourceItem);
+      } else {
+        const refIndex = list.findIndex(item => item.id === referenceId);
+        if (refIndex === -1) {
+          // If reference not found, return original list
+          return prev;
+        }
+        if (position === 'before') {
+          list.splice(refIndex, 0, sourceItem);
+        } else if (position === 'after') {
+          list.splice(refIndex + 1, 0, sourceItem);
+        }
+      }
+      return list;
+    });
+    
+    // Auto switch sorting to custom so they can see it instantly
+    if (sortBy !== 'custom') {
+      setSortBy('custom');
+      triggerToast('Ordem personalizada atualizada e selecionada!');
+    } else {
+      triggerToast('Ordem do jogo atualizada com sucesso!');
+    }
+    
+    // Close modal
+    setIsReorderModalOpen(false);
+    setReorderTargetGame(null);
+    setReorderSearchQuery('');
+  };
+
+  const otherGames = useMemo(() => {
+    if (!reorderTargetGame) return [];
+    const list = trophyEntries.filter(item => item.id !== reorderTargetGame.id);
+    if (!reorderSearchQuery.trim()) {
+      return list;
+    }
+    const cleanQuery = reorderSearchQuery.toLowerCase().trim();
+    return list.filter(item => (item.jogo || '').toLowerCase().includes(cleanQuery));
+  }, [trophyEntries, reorderTargetGame, reorderSearchQuery]);
+
   // Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<GameTrophyEntry | null>(null);
@@ -311,6 +372,7 @@ export default function GamesScreen({
   };
 
   // --- POKEMON STATES & HANDLERS ---
+  const [pokedexViewMode, setPokedexViewMode] = useState<'normal' | 'shiny'>('normal');
   const [expandedGens, setExpandedGens] = useState<string[]>(['gen1']);
   const [pokemonSearchQuery, setPokemonSearchQuery] = useState('');
   const [selectedFilterTypes, setSelectedFilterTypes] = useState<string[]>([]);
@@ -331,6 +393,56 @@ export default function GamesScreen({
   
   const [filterNotCaught, setFilterNotCaught] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const wasPokemonSearchingRef = React.useRef(false);
+
+  // Auto-expand generations that have matching results when searching or filtering
+  React.useEffect(() => {
+    const query = pokemonSearchQuery.toLowerCase().trim();
+    const hasActiveFilters = selectedFilterTypes.length > 0 || selectedFilterLegendary || selectedFilterMythical || filterNotCaught;
+    const hasValidQuery = query.length >= 3;
+
+    if (hasValidQuery || hasActiveFilters) {
+      wasPokemonSearchingRef.current = true;
+      const matchingGenIds = pokemonGenerations.filter(gen => {
+        return gen.pokemons.some(p => {
+          if (pokedexViewMode === 'shiny' && (p.isExtraForm || p.isShinyExcluded)) return false;
+
+          if (query) {
+            const matchesSearch = p.name.toLowerCase().includes(query) || p.num.includes(query);
+            if (!matchesSearch) return false;
+          }
+          if (selectedFilterTypes.length > 0) {
+            const hasType1 = p.type1 && selectedFilterTypes.includes(p.type1);
+            const hasType2 = p.type2 && selectedFilterTypes.includes(p.type2);
+            if (!hasType1 && !hasType2) return false;
+          }
+          if (selectedFilterLegendary && !p.isLegendary) return false;
+          if (selectedFilterMythical && !p.isMythical) return false;
+          if (filterNotCaught) {
+            if (pokedexViewMode === 'shiny') {
+              if (p.isShinyCaught) return false;
+            } else {
+              const isFullyCaught = p.isExtraForm || (
+                (!p.hasMale || p.isMaleCaught) &&
+                (!p.hasFemale || p.isFemaleCaught) &&
+                (!p.hasGenderless || p.isGenderlessCaught)
+              );
+              if (isFullyCaught) return false;
+            }
+          }
+          return true;
+        });
+      }).map(gen => gen.id);
+
+      setExpandedGens(matchingGenIds);
+    } else {
+      if (wasPokemonSearchingRef.current) {
+        wasPokemonSearchingRef.current = false;
+        setExpandedGens(['gen1']);
+      }
+    }
+  }, [pokemonSearchQuery, selectedFilterTypes, selectedFilterLegendary, selectedFilterMythical, filterNotCaught, pokemonGenerations, pokedexViewMode]);
 
   React.useEffect(() => {
     const scroller = document.getElementById('content-scroller') || window;
@@ -363,6 +475,23 @@ export default function GamesScreen({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addPokemonGenId, setAddPokemonGenId] = useState('gen1');
 
+  // Shiny Uncheck/Exclude Modal State
+  const [shinyUncheckTarget, setShinyUncheckTarget] = useState<{ genId: string; pokemon: PokemonEntry } | null>(null);
+  const [isRestoreShinyModalOpen, setIsRestoreShinyModalOpen] = useState(false);
+
+  // Excluded Shinies list for restore modal
+  const excludedShiniesList = useMemo(() => {
+    const result: { genId: string; genName: string; pokemon: PokemonEntry }[] = [];
+    pokemonGenerations.forEach(gen => {
+      gen.pokemons.forEach(p => {
+        if (p.isShinyExcluded) {
+          result.push({ genId: gen.id, genName: gen.name, pokemon: p });
+        }
+      });
+    });
+    return result;
+  }, [pokemonGenerations]);
+
   // Edit Pokemon States
   const [editingPokemon, setEditingPokemon] = useState<PokemonEntry | null>(null);
   const [editingPokemonGenId, setEditingPokemonGenId] = useState('');
@@ -378,7 +507,16 @@ export default function GamesScreen({
   const [editPokemonIsMythical, setEditPokemonIsMythical] = useState(false);
   const [editPokemonIsExtraForm, setEditPokemonIsExtraForm] = useState(false);
 
-  const handleTogglePokemonCatch = (generationId: string, pokemonId: string, gender: 'male' | 'female' | 'genderless') => {
+  const handleTogglePokemonCatch = (generationId: string, pokemonId: string, gender: 'male' | 'female' | 'genderless' | 'shiny') => {
+    if (gender === 'shiny') {
+      const gen = pokemonGenerations.find(g => g.id === generationId);
+      const targetPk = gen?.pokemons.find(pk => pk.id === pokemonId);
+      if (targetPk && targetPk.isShinyCaught) {
+        setShinyUncheckTarget({ genId: generationId, pokemon: targetPk });
+        return;
+      }
+    }
+
     setPokemonGenerations(prev => prev.map(gen => {
       if (gen.id !== generationId) return gen;
       return {
@@ -389,12 +527,72 @@ export default function GamesScreen({
             return { ...pk, isMaleCaught: !pk.isMaleCaught };
           } else if (gender === 'female') {
             return { ...pk, isFemaleCaught: !pk.isFemaleCaught };
-          } else {
+          } else if (gender === 'genderless') {
             return { ...pk, isGenderlessCaught: !pk.isGenderlessCaught };
+          } else if (gender === 'shiny') {
+            return { ...pk, isShinyCaught: !pk.isShinyCaught };
           }
+          return pk;
         })
       };
     }));
+  };
+
+  const handleConfirmUncheckShiny = () => {
+    if (!shinyUncheckTarget) return;
+    const { genId, pokemon } = shinyUncheckTarget;
+    setPokemonGenerations(prev => prev.map(gen => {
+      if (gen.id !== genId) return gen;
+      return {
+        ...gen,
+        pokemons: gen.pokemons.map(pk => {
+          if (pk.id !== pokemon.id) return pk;
+          return { ...pk, isShinyCaught: false };
+        })
+      };
+    }));
+    triggerToast(`Shiny desmarcado para ${pokemon.name}.`);
+    setShinyUncheckTarget(null);
+  };
+
+  const handleConfirmExcludeShiny = () => {
+    if (!shinyUncheckTarget) return;
+    const { genId, pokemon } = shinyUncheckTarget;
+    setPokemonGenerations(prev => prev.map(gen => {
+      if (gen.id !== genId) return gen;
+      return {
+        ...gen,
+        pokemons: gen.pokemons.map(pk => {
+          if (pk.id !== pokemon.id) return pk;
+          return { ...pk, isShinyCaught: false, isShinyExcluded: true };
+        })
+      };
+    }));
+    triggerToast(`${pokemon.name} foi retirado da lista de Shinies.`);
+    setShinyUncheckTarget(null);
+  };
+
+  const handleRestoreShinyPokemon = (genId: string, pokemonId: string, pokemonName: string) => {
+    setPokemonGenerations(prev => prev.map(gen => {
+      if (gen.id !== genId) return gen;
+      return {
+        ...gen,
+        pokemons: gen.pokemons.map(pk => {
+          if (pk.id !== pokemonId) return pk;
+          return { ...pk, isShinyExcluded: false };
+        })
+      };
+    }));
+    triggerToast(`${pokemonName} restaurado na lista de Shinies.`);
+  };
+
+  const handleRestoreAllExcludedShinies = () => {
+    setPokemonGenerations(prev => prev.map(gen => ({
+      ...gen,
+      pokemons: gen.pokemons.map(pk => ({ ...pk, isShinyExcluded: false }))
+    })));
+    triggerToast('Todos os Pokémons foram restaurados para a lista Shiny.');
+    setIsRestoreShinyModalOpen(false);
   };
 
   const handleStartEditPokemon = (genId: string, p: PokemonEntry) => {
@@ -1111,8 +1309,18 @@ export default function GamesScreen({
                           ))}
                         </div>
 
-                        {/* Actions (always visible on touch, opacity hover on desktop) */}
-                        <div className="flex items-center gap-1.5 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Actions (always visible) */}
+                        <div className="flex items-center gap-1.5 transition-opacity">
+                          <button
+                            onClick={() => {
+                              setReorderTargetGame(entry);
+                              setIsReorderModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg bg-bg-surface-med border border-outline-variant/20 text-text-muted hover:text-brand-primary hover:border-brand-primary/40 transition-all cursor-pointer"
+                            title="Mudar posição na ordem personalizada"
+                          >
+                            <ArrowUpDown size={12} />
+                          </button>
                           <button
                             onClick={() => handleOpenEditForm(entry)}
                             className="p-1.5 rounded-lg bg-bg-surface-med border border-outline-variant/20 text-text-muted hover:text-brand-primary hover:border-brand-primary/40 transition-all cursor-pointer"
@@ -1295,7 +1503,17 @@ export default function GamesScreen({
                           
                           {/* Actions */}
                           <td className="py-3 px-5 text-right">
-                            <div className="flex items-center justify-end gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center justify-end gap-2 transition-opacity">
+                              <button
+                                onClick={() => {
+                                  setReorderTargetGame(entry);
+                                  setIsReorderModalOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg text-text-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-all cursor-pointer"
+                                title="Mudar posição na ordem personalizada"
+                              >
+                                <ArrowUpDown size={12} />
+                              </button>
                               <button
                                 onClick={() => handleOpenEditForm(entry)}
                                 className="p-1.5 rounded-lg text-text-muted hover:text-brand-primary hover:bg-brand-primary/10 transition-all cursor-pointer"
@@ -1342,31 +1560,42 @@ export default function GamesScreen({
       )}
 
       {activeSubmenu === 'POKÉMON' && (() => {
-        // Calculate global statistics
+        // Calculate global statistics based on view mode
         let globalTotal = 0;
         let globalCaught = 0;
         
-        pokemonGenerations.forEach(gen => {
-          gen.pokemons.forEach(p => {
-            if (p.isExtraForm) return;
-            if (p.hasMale) {
+        if (pokedexViewMode === 'shiny') {
+          pokemonGenerations.forEach(gen => {
+            gen.pokemons.forEach(p => {
+              if (p.isExtraForm || p.isShinyExcluded) return;
               globalTotal++;
-              if (p.isMaleCaught) globalCaught++;
-            }
-            if (p.hasFemale) {
-              globalTotal++;
-              if (p.isFemaleCaught) globalCaught++;
-            }
-            if (p.hasGenderless) {
-              globalTotal++;
-              if (p.isGenderlessCaught) globalCaught++;
-            }
+              if (p.isShinyCaught) globalCaught++;
+            });
           });
-        });
+        } else {
+          pokemonGenerations.forEach(gen => {
+            gen.pokemons.forEach(p => {
+              if (p.isExtraForm) return;
+              if (p.hasMale) {
+                globalTotal++;
+                if (p.isMaleCaught) globalCaught++;
+              }
+              if (p.hasFemale) {
+                globalTotal++;
+                if (p.isFemaleCaught) globalCaught++;
+              }
+              if (p.hasGenderless) {
+                globalTotal++;
+                if (p.isGenderlessCaught) globalCaught++;
+              }
+            });
+          });
+        }
 
         const uniqueNums = new Set<string>();
         pokemonGenerations.forEach(gen => {
           gen.pokemons.forEach(p => {
+            if (pokedexViewMode === 'shiny' && (p.isExtraForm || p.isShinyExcluded)) return;
             if (p.num) {
               uniqueNums.add(p.num);
             }
@@ -1420,12 +1649,39 @@ export default function GamesScreen({
                 </p>
               </div>
 
-              <div className="flex items-center gap-6 w-full md:w-auto justify-center md:justify-end">
+              <div className="flex items-center gap-4 sm:gap-6 w-full md:w-auto justify-center md:justify-end flex-wrap">
+                {/* NORMAL / SHINY Mode Toggle Buttons */}
+                <div className="flex items-center bg-bg-surface-med/60 p-1 rounded-2xl border border-outline-variant/30">
+                  <button
+                    type="button"
+                    onClick={() => setPokedexViewMode('normal')}
+                    className={`px-3 py-1.5 rounded-xl font-display font-black text-xs uppercase tracking-wider transition-all cursor-pointer select-none ${
+                      pokedexViewMode === 'normal'
+                        ? 'bg-red-500 text-white shadow-md font-black'
+                        : 'text-text-muted hover:text-white'
+                    }`}
+                  >
+                    NORMAL
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPokedexViewMode('shiny')}
+                    className={`px-3 py-1.5 rounded-xl font-display font-black text-xs uppercase tracking-wider transition-all cursor-pointer select-none flex items-center gap-1.5 ${
+                      pokedexViewMode === 'shiny'
+                        ? 'bg-amber-500 text-black shadow-md font-black'
+                        : 'text-text-muted hover:text-white'
+                    }`}
+                  >
+                    <Sparkles size={13} className={pokedexViewMode === 'shiny' ? 'text-black' : 'text-amber-400'} />
+                    SHINY
+                  </button>
+                </div>
+
                 <div className="text-right">
                   <span className="text-2xl font-mono font-black text-white">{globalCaught}</span>
-                  <span className="text-xs font-semibold text-text-muted"> / {globalTotal} Caught</span>
+                  <span className="text-xs font-semibold text-text-muted"> / {globalTotal} {pokedexViewMode === 'shiny' ? 'Shinies' : 'Caught'}</span>
                 </div>
-                <div className="relative w-16 h-16 flex items-center justify-center" id="global-pokedex-progress">
+                <div className="relative w-16 h-16 flex items-center justify-center shrink-0" id="global-pokedex-progress">
                   {/* Circular Progress */}
                   <svg className="w-full h-full transform -rotate-90 animate-fade-in" viewBox="0 0 36 36">
                     {/* Background circle */}
@@ -1440,7 +1696,7 @@ export default function GamesScreen({
                     />
                     {/* Progress circle */}
                     <path
-                      className="text-red-500 transition-all duration-500 ease-out"
+                      className={pokedexViewMode === 'shiny' ? "text-amber-400 transition-all duration-500 ease-out" : "text-red-500 transition-all duration-500 ease-out"}
                       strokeWidth="3.5"
                       strokeDasharray={`${globalPercent}, 100`}
                       strokeLinecap="round"
@@ -1621,6 +1877,19 @@ export default function GamesScreen({
                     </AnimatePresence>
                   </div>
 
+                  {/* Restore Excluded Shinies Button */}
+                  {pokedexViewMode === 'shiny' && excludedShiniesList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setIsRestoreShinyModalOpen(true)}
+                      className="bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 px-3 rounded-2xl flex items-center justify-center gap-1.5 font-display font-black text-xs uppercase tracking-wider transition-all h-10 select-none cursor-pointer flex-1 sm:flex-initial"
+                      title="Ver Pokémons Ocultados da lista Shiny"
+                    >
+                      <EyeOff size={15} />
+                      <span>Ocultos ({excludedShiniesList.length})</span>
+                    </button>
+                  )}
+
                   {/* Add Pokémon Button */}
                   <button
                     type="button"
@@ -1644,27 +1913,41 @@ export default function GamesScreen({
                 // Calculate progress for this generation
                 let genTotalNeeded = 0;
                 let genCaughtCount = 0;
-                gen.pokemons.forEach(p => {
-                  if (p.isExtraForm) return;
-                  if (p.hasMale) {
+
+                if (pokedexViewMode === 'shiny') {
+                  gen.pokemons.forEach(p => {
+                    if (p.isExtraForm || p.isShinyExcluded) return;
                     genTotalNeeded++;
-                    if (p.isMaleCaught) genCaughtCount++;
-                  }
-                  if (p.hasFemale) {
-                    genTotalNeeded++;
-                    if (p.isFemaleCaught) genCaughtCount++;
-                  }
-                  if (p.hasGenderless) {
-                    genTotalNeeded++;
-                    if (p.isGenderlessCaught) genCaughtCount++;
-                  }
-                });
+                    if (p.isShinyCaught) genCaughtCount++;
+                  });
+                } else {
+                  gen.pokemons.forEach(p => {
+                    if (p.isExtraForm) return;
+                    if (p.hasMale) {
+                      genTotalNeeded++;
+                      if (p.isMaleCaught) genCaughtCount++;
+                    }
+                    if (p.hasFemale) {
+                      genTotalNeeded++;
+                      if (p.isFemaleCaught) genCaughtCount++;
+                    }
+                    if (p.hasGenderless) {
+                      genTotalNeeded++;
+                      if (p.isGenderlessCaught) genCaughtCount++;
+                    }
+                  });
+                }
 
                 const genPercent = genTotalNeeded > 0 ? (genCaughtCount / genTotalNeeded) * 100 : 0;
                 const genPercentFormatted = genPercent.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
                 // Filter pokemons of this generation
                 const filteredPokemons = gen.pokemons.filter(p => {
+                  // Hide extra forms and shiny-excluded in shiny mode
+                  if (pokedexViewMode === 'shiny' && (p.isExtraForm || p.isShinyExcluded)) {
+                    return false;
+                  }
+
                   // Search query filter
                   if (pokemonSearchQuery.trim()) {
                     const query = pokemonSearchQuery.toLowerCase().trim();
@@ -1691,12 +1974,16 @@ export default function GamesScreen({
 
                   // "Não Pegos" filter
                   if (filterNotCaught) {
-                    const isFullyCaught = p.isExtraForm || (
-                      (!p.hasMale || p.isMaleCaught) &&
-                      (!p.hasFemale || p.isFemaleCaught) &&
-                      (!p.hasGenderless || p.isGenderlessCaught)
-                    );
-                    if (isFullyCaught) return false;
+                    if (pokedexViewMode === 'shiny') {
+                      if (p.isShinyCaught) return false;
+                    } else {
+                      const isFullyCaught = p.isExtraForm || (
+                        (!p.hasMale || p.isMaleCaught) &&
+                        (!p.hasFemale || p.isFemaleCaught) &&
+                        (!p.hasGenderless || p.isGenderlessCaught)
+                      );
+                      if (isFullyCaught) return false;
+                    }
                   }
 
                   return true;
@@ -1735,7 +2022,7 @@ export default function GamesScreen({
                             </span>
                           </h4>
                           <p className="text-[10px] font-mono font-bold text-text-muted uppercase tracking-wider mt-0.5">
-                            {new Set(gen.pokemons.filter(p => !p.isExtraForm).map(p => p.num)).size} Pokémons • {genCaughtCount}/{genTotalNeeded} Gêneros
+                            {new Set(gen.pokemons.filter(p => pokedexViewMode === 'shiny' ? (!p.isExtraForm && !p.isShinyExcluded) : !p.isExtraForm).map(p => p.num)).size} Pokémons • {genCaughtCount}/{genTotalNeeded} {pokedexViewMode === 'shiny' ? 'Shinies' : 'Gêneros'}
                           </p>
                         </div>
                       </div>
@@ -1744,7 +2031,7 @@ export default function GamesScreen({
                       <div className="flex items-center gap-4 w-full sm:w-auto">
                         <div className="flex-1 sm:w-32 bg-bg-surface-med/50 h-2 rounded-full overflow-hidden border border-outline-variant/10">
                           <div
-                            className="bg-red-500 h-full rounded-full transition-all duration-500"
+                            className={pokedexViewMode === 'shiny' ? "bg-amber-400 h-full rounded-full transition-all duration-500" : "bg-red-500 h-full rounded-full transition-all duration-500"}
                             style={{ width: `${genPercent}%` }}
                           ></div>
                         </div>
@@ -1795,45 +2082,58 @@ export default function GamesScreen({
                                         <th className="py-4 px-4">Pokémon</th>
                                         <th className="py-4 px-4 text-center w-16"></th>
                                         <th className="py-4 px-4 text-center w-28">Tipo</th>
-                                        <th className="py-4 px-4 text-center w-32">
-                                          <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
-                                            <svg className="w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                              <circle cx="10" cy="14" r="5" />
-                                              <path d="M15 9l5-5" />
-                                              <path d="M16 4h4v4" />
-                                            </svg>
-                                            <span>Masculino</span>
-                                          </div>
-                                        </th>
-                                        <th className="py-4 px-4 text-center w-32">
-                                          <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
-                                            <svg className="w-4 h-4 text-pink-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                              <circle cx="12" cy="9" r="5" />
-                                              <path d="M12 14v7" />
-                                              <path d="M9 18h6" />
-                                            </svg>
-                                            <span>Feminino</span>
-                                          </div>
-                                        </th>
-                                        <th className="py-4 px-4 text-center w-32">
-                                          <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
-                                            <svg className="w-4 h-4 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                              <circle cx="12" cy="12" r="6" />
-                                              <circle cx="12" cy="12" r="2" />
-                                            </svg>
-                                            <span>Sem Gênero</span>
-                                          </div>
-                                        </th>
+                                        {pokedexViewMode === 'shiny' ? (
+                                          <th className="py-4 px-4 text-center w-36">
+                                            <div className="inline-flex items-center justify-center gap-1.5 mx-auto text-amber-400">
+                                              <Sparkles size={14} className="shrink-0" />
+                                              <span>Shiny</span>
+                                            </div>
+                                          </th>
+                                        ) : (
+                                          <>
+                                            <th className="py-4 px-4 text-center w-32">
+                                              <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
+                                                <svg className="w-4 h-4 text-blue-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                  <circle cx="10" cy="14" r="5" />
+                                                  <path d="M15 9l5-5" />
+                                                  <path d="M16 4h4v4" />
+                                                </svg>
+                                                <span>Masculino</span>
+                                              </div>
+                                            </th>
+                                            <th className="py-4 px-4 text-center w-32">
+                                              <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
+                                                <svg className="w-4 h-4 text-pink-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                  <circle cx="12" cy="9" r="5" />
+                                                  <path d="M12 14v7" />
+                                                  <path d="M9 18h6" />
+                                                </svg>
+                                                <span>Feminino</span>
+                                              </div>
+                                            </th>
+                                            <th className="py-4 px-4 text-center w-32">
+                                              <div className="inline-flex items-center justify-center gap-1.5 mx-auto">
+                                                <svg className="w-4 h-4 text-purple-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                  <circle cx="12" cy="12" r="6" />
+                                                  <circle cx="12" cy="12" r="2" />
+                                                </svg>
+                                                <span>Sem Gênero</span>
+                                              </div>
+                                            </th>
+                                          </>
+                                        )}
                                         <th className="py-4 px-4 text-center w-32">Ações</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-outline-variant/15 text-xs text-text-high">
                                       {filteredPokemons.map((p, pIdx) => {
-                                        const isFullyCaught = p.isExtraForm || (
-                                                              ((!p.hasMale || p.isMaleCaught) &&
-                                                              (!p.hasFemale || p.isFemaleCaught) &&
-                                                              (!p.hasGenderless || p.isGenderlessCaught))
-                                                            );
+                                        const isFullyCaught = pokedexViewMode === 'shiny'
+                                          ? !!p.isShinyCaught
+                                          : (p.isExtraForm || (
+                                              (!p.hasMale || p.isMaleCaught) &&
+                                              (!p.hasFemale || p.isFemaleCaught) &&
+                                              (!p.hasGenderless || p.isGenderlessCaught)
+                                            ));
                                         return (
                                           <tr
                                             key={p.id}
@@ -1850,9 +2150,9 @@ export default function GamesScreen({
                                             {/* Sprite */}
                                             <td className="py-1 px-4 text-center w-24 min-w-[96px]">
                                               <div className="w-20 h-20 flex items-center justify-center relative mx-auto">
-                                                {getPokemonSpriteUrl(p) ? (
+                                                {getPokemonSpriteUrl(p, pokedexViewMode === 'shiny') ? (
                                                   <img
-                                                    src={getPokemonSpriteUrl(p)!}
+                                                    src={getPokemonSpriteUrl(p, pokedexViewMode === 'shiny')!}
                                                     alt={p.name}
                                                     referrerPolicy="no-referrer"
                                                     className="w-20 h-20 object-contain z-10"
@@ -1882,7 +2182,7 @@ export default function GamesScreen({
                                                     }}
                                                   />
                                                 ) : null}
-                                                <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p) ? 'hidden' : ''}`}>
+                                                <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p, pokedexViewMode === 'shiny') ? 'hidden' : ''}`}>
                                                   <svg className="w-7 h-7 text-text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                     <circle cx="12" cy="12" r="10" />
                                                     <line x1="2" y1="12" x2="22" y2="12" />
@@ -1939,110 +2239,137 @@ export default function GamesScreen({
                                                 )}
                                               </div>
                                             </td>
-                                            {/* Male Catch Checkbox */}
-                                            <td className="py-3 px-4 text-center">
-                                              <div className="flex justify-center">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'male')}
-                                                  disabled={!p.hasMale}
-                                                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
-                                                    !p.hasMale
-                                                      ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
-                                                      : p.isMaleCaught
-                                                      ? 'bg-blue-600/90 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.55)] hover:scale-105 active:scale-95'
-                                                      : 'border-blue-500/35 bg-blue-500/5 hover:bg-blue-500/20 hover:border-blue-400/80 text-blue-400/60 hover:scale-105 active:scale-95'
-                                                  }`}
-                                                  title={p.hasMale ? (p.isMaleCaught ? 'Marcado como pego (Masculino)' : 'Marcar como pego (Masculino)') : 'Gênero indisponível'}
-                                                >
-                                                  {p.hasMale ? (
-                                                    <>
-                                                      <svg className={`w-4.5 h-4.5 transition-colors ${p.isMaleCaught ? 'text-white' : 'text-blue-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isMaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
-                                                        <circle cx="10" cy="14" r="5" />
-                                                        <path d="M15 9l5-5" />
-                                                        <path d="M16 4h4v4" />
-                                                      </svg>
-                                                      {p.isMaleCaught && (
-                                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
-                                                          <Check size={9} strokeWidth={4} />
-                                                        </div>
+                                            {pokedexViewMode === 'shiny' ? (
+                                              /* Shiny Catch Checkbox */
+                                              <td className="py-3 px-4 text-center">
+                                                <div className="flex justify-center">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'shiny')}
+                                                    className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                      p.isShinyCaught
+                                                        ? 'bg-amber-500/90 border-amber-400 text-black shadow-[0_0_12px_rgba(245,158,11,0.55)] hover:scale-105 active:scale-95'
+                                                        : 'border-amber-500/35 bg-amber-500/5 hover:bg-amber-500/20 hover:border-amber-400/80 text-amber-400/60 hover:scale-105 active:scale-95'
+                                                    }`}
+                                                    title={p.isShinyCaught ? 'Marcado como pego (Shiny)' : 'Marcar como pego (Shiny)'}
+                                                  >
+                                                    <Sparkles className={`w-4.5 h-4.5 transition-colors ${p.isShinyCaught ? 'text-black' : 'text-amber-400'}`} />
+                                                    {p.isShinyCaught && (
+                                                      <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                        <Check size={9} strokeWidth={4} />
+                                                      </div>
+                                                    )}
+                                                  </button>
+                                                </div>
+                                              </td>
+                                            ) : (
+                                              <>
+                                                {/* Male Catch Checkbox */}
+                                                <td className="py-3 px-4 text-center">
+                                                  <div className="flex justify-center">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'male')}
+                                                      disabled={!p.hasMale}
+                                                      className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                        !p.hasMale
+                                                          ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
+                                                          : p.isMaleCaught
+                                                          ? 'bg-blue-600/90 border-blue-400 text-white shadow-[0_0_12px_rgba(59,130,246,0.55)] hover:scale-105 active:scale-95'
+                                                          : 'border-blue-500/35 bg-blue-500/5 hover:bg-blue-500/20 hover:border-blue-400/80 text-blue-400/60 hover:scale-105 active:scale-95'
+                                                      }`}
+                                                      title={p.hasMale ? (p.isMaleCaught ? 'Marcado como pego (Masculino)' : 'Marcar como pego (Masculino)') : 'Gênero indisponível'}
+                                                    >
+                                                      {p.hasMale ? (
+                                                        <>
+                                                          <svg className={`w-4.5 h-4.5 transition-colors ${p.isMaleCaught ? 'text-white' : 'text-blue-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isMaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
+                                                            <circle cx="10" cy="14" r="5" />
+                                                            <path d="M15 9l5-5" />
+                                                            <path d="M16 4h4v4" />
+                                                          </svg>
+                                                          {p.isMaleCaught && (
+                                                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                              <Check size={9} strokeWidth={4} />
+                                                            </div>
+                                                          )}
+                                                        </>
+                                                      ) : (
+                                                        <span className="text-neutral-700/40 text-xs">-</span>
                                                       )}
-                                                    </>
-                                                  ) : (
-                                                    <span className="text-neutral-700/40 text-xs">-</span>
-                                                  )}
-                                                </button>
-                                              </div>
-                                            </td>
-                                            {/* Female Catch Checkbox */}
-                                            <td className="py-3 px-4 text-center">
-                                              <div className="flex justify-center">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'female')}
-                                                  disabled={!p.hasFemale}
-                                                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
-                                                    !p.hasFemale
-                                                      ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
-                                                      : p.isFemaleCaught
-                                                      ? 'bg-pink-600/90 border-pink-400 text-white shadow-[0_0_12px_rgba(236,72,153,0.55)] hover:scale-105 active:scale-95'
-                                                      : 'border-pink-500/35 bg-pink-500/5 hover:bg-pink-500/20 hover:border-pink-400/80 text-pink-400/60 hover:scale-105 active:scale-95'
-                                                  }`}
-                                                  title={p.hasFemale ? (p.isFemaleCaught ? 'Marcado como pego (Feminino)' : 'Marcar como pego (Feminino)') : 'Gênero indisponível'}
-                                                >
-                                                  {p.hasFemale ? (
-                                                    <>
-                                                      <svg className={`w-4.5 h-4.5 transition-colors ${p.isFemaleCaught ? 'text-white' : 'text-pink-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isFemaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
-                                                        <circle cx="12" cy="9" r="5" />
-                                                        <path d="M12 14v7" />
-                                                        <path d="M9 18h6" />
-                                                      </svg>
-                                                      {p.isFemaleCaught && (
-                                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
-                                                          <Check size={9} strokeWidth={4} />
-                                                        </div>
+                                                    </button>
+                                                  </div>
+                                                </td>
+                                                {/* Female Catch Checkbox */}
+                                                <td className="py-3 px-4 text-center">
+                                                  <div className="flex justify-center">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'female')}
+                                                      disabled={!p.hasFemale}
+                                                      className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                        !p.hasFemale
+                                                          ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
+                                                          : p.isFemaleCaught
+                                                          ? 'bg-pink-600/90 border-pink-400 text-white shadow-[0_0_12px_rgba(236,72,153,0.55)] hover:scale-105 active:scale-95'
+                                                          : 'border-pink-500/35 bg-pink-500/5 hover:bg-pink-500/20 hover:border-pink-400/80 text-pink-400/60 hover:scale-105 active:scale-95'
+                                                      }`}
+                                                      title={p.hasFemale ? (p.isFemaleCaught ? 'Marcado como pego (Feminino)' : 'Marcar como pego (Feminino)') : 'Gênero indisponível'}
+                                                    >
+                                                      {p.hasFemale ? (
+                                                        <>
+                                                          <svg className={`w-4.5 h-4.5 transition-colors ${p.isFemaleCaught ? 'text-white' : 'text-pink-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isFemaleCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
+                                                            <circle cx="12" cy="9" r="5" />
+                                                            <path d="M12 14v7" />
+                                                            <path d="M9 18h6" />
+                                                          </svg>
+                                                          {p.isFemaleCaught && (
+                                                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                              <Check size={9} strokeWidth={4} />
+                                                            </div>
+                                                          )}
+                                                        </>
+                                                      ) : (
+                                                        <span className="text-neutral-700/40 text-xs">-</span>
                                                       )}
-                                                    </>
-                                                  ) : (
-                                                    <span className="text-neutral-700/40 text-xs">-</span>
-                                                  )}
-                                                </button>
-                                              </div>
-                                            </td>
-                                            {/* Genderless Catch Checkbox */}
-                                            <td className="py-3 px-4 text-center">
-                                              <div className="flex justify-center">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'genderless')}
-                                                  disabled={!p.hasGenderless}
-                                                  className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
-                                                    !p.hasGenderless
-                                                      ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
-                                                      : p.isGenderlessCaught
-                                                      ? 'bg-purple-600/90 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.55)] hover:scale-105 active:scale-95'
-                                                      : 'border-purple-500/35 bg-purple-500/5 hover:bg-purple-500/20 hover:border-purple-400/80 text-purple-400/60 hover:scale-105 active:scale-95'
-                                                  }`}
-                                                  title={p.hasGenderless ? (p.isGenderlessCaught ? 'Marcado como pego (Sem Gênero)' : 'Marcar como pego (Sem Gênero)') : 'Disponível apenas para espécies sem gênero'}
-                                                >
-                                                  {p.hasGenderless ? (
-                                                    <>
-                                                      <svg className={`w-4.5 h-4.5 transition-colors ${p.isGenderlessCaught ? 'text-white' : 'text-purple-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isGenderlessCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
-                                                        <circle cx="12" cy="12" r="6" />
-                                                        <circle cx="12" cy="12" r="2" />
-                                                      </svg>
-                                                      {p.isGenderlessCaught && (
-                                                        <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
-                                                          <Check size={9} strokeWidth={4} />
-                                                        </div>
+                                                    </button>
+                                                  </div>
+                                                </td>
+                                                {/* Genderless Catch Checkbox */}
+                                                <td className="py-3 px-4 text-center">
+                                                  <div className="flex justify-center">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'genderless')}
+                                                      disabled={!p.hasGenderless}
+                                                      className={`w-9 h-9 rounded-xl border flex items-center justify-center transition-all cursor-pointer select-none relative ${
+                                                        !p.hasGenderless
+                                                          ? 'border-neutral-900 bg-neutral-950/10 text-neutral-800/20 cursor-not-allowed opacity-15'
+                                                          : p.isGenderlessCaught
+                                                          ? 'bg-purple-600/90 border-purple-400 text-white shadow-[0_0_12px_rgba(168,85,247,0.55)] hover:scale-105 active:scale-95'
+                                                          : 'border-purple-500/35 bg-purple-500/5 hover:bg-purple-500/20 hover:border-purple-400/80 text-purple-400/60 hover:scale-105 active:scale-95'
+                                                      }`}
+                                                      title={p.hasGenderless ? (p.isGenderlessCaught ? 'Marcado como pego (Sem Gênero)' : 'Marcar como pego (Sem Gênero)') : 'Disponível apenas para espécies sem gênero'}
+                                                    >
+                                                      {p.hasGenderless ? (
+                                                        <>
+                                                          <svg className={`w-4.5 h-4.5 transition-colors ${p.isGenderlessCaught ? 'text-white' : 'text-purple-400'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={p.isGenderlessCaught ? "3" : "2.5"} strokeLinecap="round" strokeLinejoin="round">
+                                                            <circle cx="12" cy="12" r="6" />
+                                                            <circle cx="12" cy="12" r="2" />
+                                                          </svg>
+                                                          {p.isGenderlessCaught && (
+                                                            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-md">
+                                                              <Check size={9} strokeWidth={4} />
+                                                            </div>
+                                                          )}
+                                                        </>
+                                                      ) : (
+                                                        <span className="text-neutral-700/40 text-xs">-</span>
                                                       )}
-                                                    </>
-                                                  ) : (
-                                                    <span className="text-neutral-700/40 text-xs">-</span>
-                                                  )}
-                                                </button>
-                                              </div>
-                                            </td>
+                                                    </button>
+                                                  </div>
+                                                </td>
+                                              </>
+                                            )}
                                             {/* Actions */}
                                             <td className="py-3 px-4 text-center">
                                               <div className="flex items-center justify-center gap-1.5">
@@ -2096,11 +2423,13 @@ export default function GamesScreen({
                                 {/* Mobile Cards List (Scroll-free presentation) */}
                                 <div className="block md:hidden space-y-4">
                                   {filteredPokemons.map((p, pIdx) => {
-                                    const isFullyCaught = p.isExtraForm || (
-                                                          ((!p.hasMale || p.isMaleCaught) &&
-                                                          (!p.hasFemale || p.isFemaleCaught) &&
-                                                          (!p.hasGenderless || p.isGenderlessCaught))
-                                                        );
+                                    const isFullyCaught = pokedexViewMode === 'shiny'
+                                      ? !!p.isShinyCaught
+                                      : (p.isExtraForm || (
+                                          (!p.hasMale || p.isMaleCaught) &&
+                                          (!p.hasFemale || p.isFemaleCaught) &&
+                                          (!p.hasGenderless || p.isGenderlessCaught)
+                                        ));
                                     return (
                                       <div
                                         key={p.id}
@@ -2158,9 +2487,9 @@ export default function GamesScreen({
                                         <div className="flex items-center gap-4">
                                           {/* Sprite */}
                                           <div className="w-16 h-16 flex items-center justify-center shrink-0 relative">
-                                            {getPokemonSpriteUrl(p) ? (
+                                            {getPokemonSpriteUrl(p, pokedexViewMode === 'shiny') ? (
                                               <img
-                                                src={getPokemonSpriteUrl(p)!}
+                                                src={getPokemonSpriteUrl(p, pokedexViewMode === 'shiny')!}
                                                 alt={p.name}
                                                 referrerPolicy="no-referrer"
                                                 className="w-16 h-16 object-contain z-10 animate-fade-in"
@@ -2175,7 +2504,7 @@ export default function GamesScreen({
                                                 }}
                                               />
                                             ) : null}
-                                            <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p) ? 'hidden' : ''}`}>
+                                            <div className={`fallback-icon absolute inset-0 flex items-center justify-center ${getPokemonSpriteUrl(p, pokedexViewMode === 'shiny') ? 'hidden' : ''}`}>
                                               <svg className="w-5 h-5 text-text-muted/20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                                 <circle cx="12" cy="12" r="10" />
                                                 <line x1="2" y1="12" x2="22" y2="12" />
@@ -2184,7 +2513,30 @@ export default function GamesScreen({
                                           </div>
 
                                           {/* Catch States Buttons */}
-                                          <div className="flex-1 grid grid-cols-3 gap-1.5">
+                                          {pokedexViewMode === 'shiny' ? (
+                                            <div className="flex-1 flex justify-center">
+                                              {/* Shiny Catch */}
+                                              <button
+                                                type="button"
+                                                onClick={() => handleTogglePokemonCatch(gen.id, p.id, 'shiny')}
+                                                className={`py-2 px-6 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer select-none relative ${
+                                                  p.isShinyCaught
+                                                    ? 'bg-amber-500/90 border-amber-400 text-black shadow-[0_0_8px_rgba(245,158,11,0.4)] hover:scale-105 active:scale-95'
+                                                    : 'border-amber-500/25 bg-amber-500/5 text-amber-400/60 hover:scale-105 active:scale-95'
+                                                }`}
+                                                title={p.isShinyCaught ? 'Marcado como pego (Shiny)' : 'Marcar como pego (Shiny)'}
+                                              >
+                                                <Sparkles className={`w-4 h-4 ${p.isShinyCaught ? 'text-black' : 'text-amber-400'}`} />
+                                                <span className="text-[10px] font-black uppercase tracking-wider">Shiny</span>
+                                                {p.isShinyCaught && (
+                                                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center text-white border border-bg-surface-low shadow-sm">
+                                                    <Check size={8} strokeWidth={4} />
+                                                  </div>
+                                                )}
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex-1 grid grid-cols-3 gap-1.5">
                                             {/* Male Catch */}
                                             <button
                                               type="button"
@@ -2265,6 +2617,7 @@ export default function GamesScreen({
                                               )}
                                             </button>
                                           </div>
+                                        )}
                                         </div>
 
                                         {/* Actions Row */}
@@ -2833,6 +3186,157 @@ export default function GamesScreen({
                 </div>
               )}
             </AnimatePresence>
+
+            {/* Shiny Uncheck / Exclude Selection Modal */}
+            <AnimatePresence>
+              {shinyUncheckTarget && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  {/* Backdrop */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setShinyUncheckTarget(null)}
+                    className="fixed inset-0 bg-black/80 backdrop-blur-md"
+                  />
+
+                  {/* Dialog Container */}
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                    className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-6 shadow-2xl max-w-sm w-full relative z-10 space-y-5 text-center overflow-hidden"
+                  >
+                    {/* Header Icon & Pokemon Preview */}
+                    <div className="flex flex-col items-center gap-2 pt-1">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.25)] relative">
+                        <Sparkles size={24} />
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-xs font-mono font-bold text-text-muted/70">#{shinyUncheckTarget.pokemon.num}</span>
+                        <h3 className="font-display font-black text-base text-white">{shinyUncheckTarget.pokemon.name}</h3>
+                      </div>
+                      <p className="text-xs text-text-muted/80 leading-relaxed px-2">
+                        Como você deseja alterar a marcação deste Pokémon na Pokédex Shiny?
+                      </p>
+                    </div>
+
+                    {/* Action Choices */}
+                    <div className="space-y-2.5 pt-1">
+                      {/* Option 1: Desmarcar Shiny */}
+                      <button
+                        type="button"
+                        onClick={handleConfirmUncheckShiny}
+                        className="w-full py-3 px-4 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs uppercase tracking-wider font-display flex items-center justify-between transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Sparkles size={16} className="text-amber-400 group-hover:scale-110 transition-transform" />
+                          <span className="text-left font-black">Desmarcar Shiny</span>
+                        </div>
+                        <span className="text-[10px] text-amber-400/70 font-normal normal-case">Permanecer na lista</span>
+                      </button>
+
+                      {/* Option 2: Retirar da lista */}
+                      <button
+                        type="button"
+                        onClick={handleConfirmExcludeShiny}
+                        className="w-full py-3 px-4 rounded-2xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-300 font-bold text-xs uppercase tracking-wider font-display flex items-center justify-between transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <EyeOff size={16} className="text-red-400 group-hover:scale-110 transition-transform" />
+                          <span className="text-left font-black">Retirar da Lista</span>
+                        </div>
+                        <span className="text-[10px] text-red-400/70 font-normal normal-case">Ocultar dos shinies</span>
+                      </button>
+                    </div>
+
+                    {/* Cancel */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShinyUncheckTarget(null)}
+                        className="w-full py-2 text-xs text-text-muted hover:text-white font-semibold transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* Modal for Restoring Excluded Shinies */}
+            <AnimatePresence>
+              {isRestoreShinyModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setIsRestoreShinyModalOpen(false)}
+                    className="fixed inset-0 bg-black/80 backdrop-blur-md"
+                  />
+
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                    className="bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-6 shadow-2xl max-w-md w-full relative z-10 space-y-4 overflow-hidden text-left"
+                  >
+                    <div className="flex items-center justify-between border-b border-outline-variant/20 pb-3">
+                      <h3 className="font-display font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
+                        <EyeOff size={16} className="text-amber-400" />
+                        Pokémons Ocultados da Lista Shiny ({excludedShiniesList.length})
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setIsRestoreShinyModalOpen(false)}
+                        className="text-text-muted hover:text-white transition-all w-8 h-8 rounded-lg flex items-center justify-center hover:bg-bg-surface-med/40"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {excludedShiniesList.length === 0 ? (
+                      <p className="text-xs text-text-muted text-center py-6">Nenhum Pokémon foi ocultado da lista Shiny.</p>
+                    ) : (
+                      <>
+                        <div className="max-h-[300px] overflow-y-auto space-y-2 pr-1 scrollbar-thin scrollbar-thumb-outline-variant/40">
+                          {excludedShiniesList.map(({ genId, genName, pokemon }) => (
+                            <div key={pokemon.id} className="flex items-center justify-between p-2.5 bg-bg-surface-med/30 rounded-2xl border border-outline-variant/20">
+                              <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-mono font-bold text-text-muted/60">#{pokemon.num}</span>
+                                <div>
+                                  <span className="font-bold text-xs text-white block">{pokemon.name}</span>
+                                  <span className="text-[9px] text-text-muted/60">{genName}</span>
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRestoreShinyPokemon(genId, pokemon.id, pokemon.name)}
+                                className="px-2.5 py-1 bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 rounded-xl text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                Restaurar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="pt-2 border-t border-outline-variant/15 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleRestoreAllExcludedShinies}
+                            className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/35 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                          >
+                            Restaurar Todos
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </motion.div>
         );
       })()}
@@ -3229,6 +3733,150 @@ export default function GamesScreen({
         )}
       </AnimatePresence>
 
+      {/* Modal: Reordenar Jogo */}
+      <AnimatePresence>
+        {isReorderModalOpen && reorderTargetGame && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm shadow-2xl" id="reorder-game-modal-overlay">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md bg-bg-surface-low border border-outline-variant/60 rounded-3xl p-6 space-y-4 shadow-xl text-left flex flex-col max-h-[85vh]"
+              id="reorder-game-modal-content"
+            >
+              {/* Header */}
+              <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-3 shrink-0">
+                <ArrowUpDown className="text-brand-primary" size={18} />
+                <h3 className="font-display font-black text-sm tracking-tight text-white uppercase flex-1">
+                  Reordenar Jogo
+                </h3>
+                <button 
+                  onClick={() => {
+                    setIsReorderModalOpen(false);
+                    setReorderTargetGame(null);
+                    setReorderSearchQuery('');
+                  }}
+                  className="text-text-muted hover:text-white transition-all cursor-pointer p-1 rounded-lg bg-bg-surface-med/30 hover:bg-bg-surface-med"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="text-xs text-text-muted shrink-0">
+                Você está movendo: <span className="font-bold text-white uppercase font-display">{reorderTargetGame.jogo}</span>
+              </div>
+
+              {/* Quick Actions (Top / Bottom) */}
+              <div className="grid grid-cols-2 gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleReorderGame(reorderTargetGame.id, 'start')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-bg-surface-med/50 hover:bg-bg-surface-med border border-outline-variant/30 hover:border-outline-variant/50 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                >
+                  <ArrowUp size={12} className="text-brand-primary" />
+                  No início da lista
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReorderGame(reorderTargetGame.id, 'end')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-bg-surface-med/50 hover:bg-bg-surface-med border border-outline-variant/30 hover:border-outline-variant/50 text-white font-black text-[10px] uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                >
+                  <ArrowDown size={12} className="text-brand-primary" />
+                  No fim da lista
+                </button>
+              </div>
+
+              <div className="border-t border-outline-variant/20 pt-3 flex flex-col flex-1 min-h-0">
+                <label className="block text-[10px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono mb-2 shrink-0">
+                  Ou escolha um jogo de referência:
+                </label>
+                
+                {/* Search bar */}
+                <div className="relative mb-3 shrink-0">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted/60" size={14} />
+                  <input
+                    type="text"
+                    placeholder="Buscar jogo de referência..."
+                    value={reorderSearchQuery}
+                    onChange={e => setReorderSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none"
+                  />
+                  {reorderSearchQuery && (
+                    <button
+                      onClick={() => setReorderSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-white"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* List of reference games */}
+                <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 min-h-[150px] scrollbar-thin scrollbar-thumb-outline-variant/30">
+                  {otherGames.length === 0 ? (
+                    <div className="text-center py-8 text-text-muted text-xs">
+                      Nenhum jogo encontrado.
+                    </div>
+                  ) : (
+                    otherGames.map(game => (
+                      <div 
+                        key={game.id} 
+                        className="flex items-center justify-between bg-bg-surface-med/20 hover:bg-bg-surface-med/30 p-2.5 rounded-xl border border-outline-variant/10 transition-all gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-white truncate uppercase font-display">{game.jogo}</p>
+                          <div className="flex gap-1 mt-0.5">
+                            {(game.platforms || []).map(p => (
+                              <span key={p} className="text-[8px] font-black font-mono text-brand-primary/80 bg-brand-primary/5 border border-brand-primary/10 px-1 rounded">
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleReorderGame(reorderTargetGame.id, 'before', game.id)}
+                            className="px-2.5 py-1.5 bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary border border-brand-primary/20 hover:border-brand-primary/40 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                            title={`Inserir antes de ${game.jogo}`}
+                          >
+                            Antes
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReorderGame(reorderTargetGame.id, 'after', game.id)}
+                            className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 text-white border border-outline-variant/30 hover:border-outline-variant/50 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                            title={`Inserir depois de ${game.jogo}`}
+                          >
+                            Depois
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Footer buttons */}
+              <div className="flex justify-end gap-2 pt-3 border-t border-outline-variant/20 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsReorderModalOpen(false);
+                    setReorderTargetGame(null);
+                    setReorderSearchQuery('');
+                  }}
+                  className="text-text-muted hover:text-white font-extrabold uppercase text-[10px] tracking-widest py-2 px-4 transition-all cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Floating Scroll to Top Button */}
       <AnimatePresence>
         {showScrollTop && (
@@ -3237,7 +3885,7 @@ export default function GamesScreen({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 20 }}
             onClick={scrollToTop}
-            className="fixed bottom-6 right-6 z-50 p-3 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all border border-red-400/20 cursor-pointer flex items-center justify-center"
+            className="fixed bottom-6 md:bottom-24 right-6 z-50 p-3 rounded-full bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-all border border-red-400/20 cursor-pointer flex items-center justify-center"
             title="Voltar ao topo"
             id="back-to-top-button"
           >

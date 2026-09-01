@@ -32,6 +32,18 @@ export interface Account {
   color?: string; // Suffix/value of customizeable dot color
 }
 
+export interface AccountHistoryEntry {
+  id: string;
+  accountId: string;
+  type: 'soma' | 'subtracao' | 'edicao' | 'criacao';
+  timestamp: string; // ISO string
+  dateFormatted: string; // e.g. "01/09/2026 às 10:45"
+  description: string;
+  previousBalance: number;
+  newBalance: number;
+  amountChange?: number;
+}
+
 export interface TempEntry {
   id: string;
   description: string;
@@ -94,6 +106,8 @@ export interface PlanScreenProps {
   accounts: Account[];
   activePlanMonth?: string;
   setActivePlanMonth?: (value: string | ((prev: string) => string)) => void;
+  planMonth?: string;
+  setPlanMonth?: (value: string | ((prev: string) => string)) => void;
 }
 
 export interface FuelEntry {
@@ -202,6 +216,8 @@ export interface PokemonEntry {
   isMaleCaught?: boolean;
   isFemaleCaught?: boolean;
   isGenderlessCaught?: boolean;
+  isShinyCaught?: boolean;
+  isShinyExcluded?: boolean;
   type1?: string;
   type2?: string;
   isLegendary?: boolean;
@@ -213,6 +229,25 @@ export interface PokemonGeneration {
   id: string;
   name: string;
   pokemons: PokemonEntry[];
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+export interface ChecklistCategory {
+  id: string;
+  name: string;
+  items: ChecklistItem[];
+}
+
+export interface ChecklistsScreenProps {
+  checklists: ChecklistCategory[];
+  setChecklists: (value: ChecklistCategory[] | ((prev: ChecklistCategory[]) => ChecklistCategory[])) => void;
+  triggerToast: (msg: string) => void;
+  theme?: 'dark' | 'light';
 }
 
 export interface SystemVersions {

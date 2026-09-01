@@ -62,12 +62,19 @@ import {
   CalendarDays,
   BookLock,
   Trophy,
-  Play
+  Play,
+  Eye,
+  EyeOff,
+  ListChecks,
+  Radio
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions } from './types';
+import { Transaction, CreditCard, Account, AccountHistoryEntry, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions, ChecklistCategory } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabase, isSupabaseConfigured } from './supabase';
+import SpotifyModal from './components/SpotifyModal';
+import SyncStatusIndicator, { SyncStatusType } from './components/SyncStatusIndicator';
+import AccountHistoryModal from './components/AccountHistoryModal';
 export interface AppUser {
   uid: string;
   email?: string | null;
@@ -92,6 +99,7 @@ import NotesScreen from './components/NotesScreen';
 import EscalaScreen from './components/EscalaScreen';
 import TheListScreen from './components/TheListScreen';
 import GamesScreen from './components/GamesScreen';
+import ChecklistsScreen from './components/ChecklistsScreen';
 import { AppNote } from './types';
 import { parseRawGames } from './gamesSeed';
 import { RAW_POKEMON_GEN1_TSV } from './pokemonSeed';
@@ -156,12 +164,13 @@ interface AccountItemProps {
   acc: Account;
   onEdit: (acc: Account) => void;
   onDelete: (acc: Account) => void;
+  onViewHistory: (acc: Account) => void;
   onAddBalance: (acc: Account) => void;
   onSubBalance: (acc: Account) => void;
   key?: React.Key;
 }
 
-function AccountItem({ acc, onEdit, onDelete, onAddBalance, onSubBalance }: AccountItemProps) {
+function AccountItem({ acc, onEdit, onDelete, onViewHistory, onAddBalance, onSubBalance }: AccountItemProps) {
   const dragControls = useDragControls();
 
   return (
@@ -186,6 +195,15 @@ function AccountItem({ acc, onEdit, onDelete, onAddBalance, onSubBalance }: Acco
           <span className="text-[11px] font-bold text-white uppercase tracking-wide">{acc.name}</span>
         </div>
         <div className="flex items-center gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => onViewHistory(acc)}
+            className="text-text-muted hover:text-[#ffe08b] p-1 rounded-lg hover:bg-white/5 transition-colors cursor-pointer flex items-center justify-center"
+            title="Histórico de modificações"
+            id={`btn-history-acc-${acc.id}`}
+          >
+            <History size={12} />
+          </button>
           <button
             type="button"
             onClick={() => onEdit(acc)}
@@ -319,6 +337,8 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(false);
   const [firestoreWriteError, setFirestoreWriteError] = useState<string | null>(null);
   const [cloudLastSynced, setCloudLastSynced] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusType>('synced');
+  const isInitialSyncMountRef = useRef<boolean>(true);
   const [emailInput, setEmailInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -463,7 +483,7 @@ export default function App() {
   const [isAnalysisView, setIsAnalysisView] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist' | 'checklists'>('budget');
   const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'system'>('finance');
   const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
   const [isWorkExpanded, setIsWorkExpanded] = useState(false);
@@ -486,6 +506,39 @@ export default function App() {
   const [editAccountBalance, setEditAccountBalance] = useState('');
   const [editAccountColor, setEditAccountColor] = useState<string>('brand-primary');
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
+
+  // --- Account History Logs (Last modifications: soma, subtração, edição) ---
+  const [accountHistory, setAccountHistory] = useState<AccountHistoryEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_account_history');
+    return saved ? (JSON.parse(saved) as AccountHistoryEntry[]) : [];
+  });
+  const [selectedHistoryAccount, setSelectedHistoryAccount] = useState<Account | null>(null);
+  const [isAccountHistoryModalOpen, setIsAccountHistoryModalOpen] = useState(false);
+
+  const logAccountHistory = (
+    accountId: string,
+    type: 'soma' | 'subtracao' | 'edicao' | 'criacao',
+    previousBalance: number,
+    newBalance: number,
+    description: string,
+    amountChange?: number
+  ) => {
+    const now = new Date();
+    const dateFormatted = `${now.toLocaleDateString('pt-BR')} às ${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    const newEntry: AccountHistoryEntry = {
+      id: 'acchist_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+      accountId,
+      type,
+      dateFormatted,
+      timestamp: now.toISOString(),
+      description,
+      previousBalance,
+      newBalance,
+      amountChange
+    };
+
+    setAccountHistory(prev => [newEntry, ...prev]);
+  };
 
   // --- Plan/Budget Planning Screen States ---
   const [planEntries, setPlanEntries] = useState<PlanEntry[]>(() => {
@@ -621,6 +674,15 @@ export default function App() {
   const [newPatrimonyMonthYear, setNewPatrimonyMonthYear] = useState('');
   const [newPatrimonyAmount, setNewPatrimonyAmount] = useState('');
 
+  // Privacy visibility toggles (defaults to hidden on page load, synced across finance header and contas)
+  const [showNetWorth, setShowNetWorth] = useState<boolean>(false);
+  const showConsolidatedBalance = showNetWorth;
+
+  const toggleNetWorth = () => {
+    setShowNetWorth(prev => !prev);
+  };
+  const toggleConsolidatedBalance = toggleNetWorth;
+
   // --- Fuel Module States ---
   const [isFuelFormOpen, setIsFuelFormOpen] = useState(false);
   const [fuelDate, setFuelDate] = useState(() => {
@@ -745,6 +807,16 @@ export default function App() {
     return [];
   });
 
+  const [checklists, setChecklists] = useState<ChecklistCategory[]>(() => {
+    const saved = localStorage.getItem('nocturne_checklists');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as ChecklistCategory[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
   // --- The List States ---
   const [theListEntries, setTheListEntries] = useState<TheListEntry[]>(() => {
     const saved = localStorage.getItem('nocturne_thelist_entries');
@@ -856,6 +928,7 @@ export default function App() {
     return {};
   });
   const [isTheListPasswordModalOpen, setIsTheListPasswordModalOpen] = useState(false);
+  const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false);
   const [theListPasswordInput, setTheListPasswordInput] = useState('');
 
   // --- Escala States ---
@@ -887,12 +960,11 @@ export default function App() {
   const [planSearchQuery, setPlanSearchQuery] = useState('');
 
   useEffect(() => {
-    if (activePlanMonth) {
-      setPlanMonth(activePlanMonth);
-      const [y, m] = activePlanMonth.split('-');
+    if (planMonth) {
+      const [y, m] = planMonth.split('-');
       setPlanSearchQuery(`${m}/${y}`);
     }
-  }, [activePlanMonth]);
+  }, [planMonth]);
 
   useEffect(() => {
     if (contrachequeMonth) {
@@ -942,7 +1014,7 @@ export default function App() {
         if (m >= 1 && m <= 12 && y >= 1900 && y <= 2100) {
           const monthFormatted = m < 10 ? `0${m}` : `${m}`;
           const targetMonth = `${y}-${monthFormatted}`;
-          setActivePlanMonth(targetMonth);
+          setPlanMonth(targetMonth);
           triggerToast(`Planejamento de ${clean} exibido!`);
         } else {
           triggerToast('Mês inválido (01 a 12).');
@@ -978,7 +1050,7 @@ export default function App() {
   };
 
   const handlePlanPrevMonth = () => {
-    const [yearStr, monthNumStr] = activePlanMonth.split('-');
+    const [yearStr, monthNumStr] = planMonth.split('-');
     let year = parseInt(yearStr, 10);
     let month = parseInt(monthNumStr, 10);
     month -= 1;
@@ -987,11 +1059,11 @@ export default function App() {
       year -= 1;
     }
     const monthFormatted = month < 10 ? `0${month}` : `${month}`;
-    setActivePlanMonth(`${year}-${monthFormatted}`);
+    setPlanMonth(`${year}-${monthFormatted}`);
   };
 
   const handlePlanNextMonth = () => {
-    const [yearStr, monthNumStr] = activePlanMonth.split('-');
+    const [yearStr, monthNumStr] = planMonth.split('-');
     let year = parseInt(yearStr, 10);
     let month = parseInt(monthNumStr, 10);
     month += 1;
@@ -1000,7 +1072,7 @@ export default function App() {
       year += 1;
     }
     const monthFormatted = month < 10 ? `0${month}` : `${month}`;
-    setActivePlanMonth(`${year}-${monthFormatted}`);
+    setPlanMonth(`${year}-${monthFormatted}`);
   };
 
 
@@ -1033,6 +1105,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nocturne_notes', JSON.stringify(notes));
   }, [notes]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_checklists', JSON.stringify(checklists));
+  }, [checklists]);
 
   useEffect(() => {
     localStorage.setItem('nocturne_thelist_entries', JSON.stringify(theListEntries));
@@ -1081,6 +1157,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('nocturne_accounts', JSON.stringify(accounts));
   }, [accounts]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_account_history', JSON.stringify(accountHistory));
+  }, [accountHistory]);
 
   useEffect(() => {
     localStorage.setItem('nocturne_budget_accounts', JSON.stringify(budgetAccounts));
@@ -1181,6 +1261,7 @@ export default function App() {
             console.warn("Supabase fetch failed (falling back to offline/local):", fetchErr);
             setFirestoreWriteError(`Falha ao carregar dados do Supabase: ${fetchErr.message}`);
             setIsOffline(true);
+            setSyncStatus('error');
             setDataLoadedFromFirestore(true);
             setAuthLoading(false);
             return;
@@ -1188,13 +1269,17 @@ export default function App() {
 
           if (dbData && (dbData as any).updated_at) {
             setCloudLastSynced((dbData as any).updated_at);
+          } else {
+            setCloudLastSynced(new Date().toISOString());
           }
+          setSyncStatus('synced');
 
           if (!dbData) {
             // Document doesn't exist yet, insert initial state
             const initialSyncData = {
               user,
               accounts,
+              accountHistory,
               budgetAccounts,
               transactions,
               cards,
@@ -1210,6 +1295,7 @@ export default function App() {
               historicoEntries,
               me4Exclusions,
               notes,
+              checklists,
               planEntries,
               planIncomes,
               planCards,
@@ -1257,6 +1343,9 @@ export default function App() {
                 return updated;
               });
               setAccounts(loadedAccs);
+            }
+            if (data.accountHistory) {
+              setAccountHistory(data.accountHistory);
             }
             if (data.budgetAccounts) {
               const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
@@ -1323,6 +1412,9 @@ export default function App() {
             if (data.notes !== undefined) {
               setNotes(data.notes);
             }
+            if (data.checklists !== undefined) {
+              setChecklists(data.checklists);
+            }
             if (data.escalaTurnos !== undefined) {
               setEscalaTurnos(data.escalaTurnos);
             }
@@ -1356,6 +1448,7 @@ export default function App() {
           console.warn('Error fetching Supabase data (using local storage):', err);
           setFirestoreWriteError(`Falha ao sincronizar dados com o Supabase: ${err.message}`);
           setIsOffline(true);
+          setSyncStatus('error');
           setDataLoadedFromFirestore(true);
         } finally {
           setAuthLoading(false);
@@ -1364,6 +1457,7 @@ export default function App() {
         lastProcessedUserIdRef.current = null;
         setFirebaseUser(null);
         setDataLoadedFromFirestore(false);
+        setSyncStatus('offline');
         setAuthLoading(false);
       }
     };
@@ -1376,6 +1470,19 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Before unload handler to warn user if changes are still pending saving
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (syncStatus === 'pending' || syncStatus === 'syncing') {
+        e.preventDefault();
+        e.returnValue = 'Há alterações pendentes sendo salvas na nuvem. Deseja realmente sair?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [syncStatus]);
 
   // Proactive runtime migration for 'Repo Nu' -> 'PIX'
   useEffect(() => {
@@ -1423,12 +1530,27 @@ export default function App() {
   // Synchronize with Supabase (Cloud Database)
   useEffect(() => {
     if (!firebaseUser || !dataLoadedFromFirestore) return;
+    if (firebaseUser.uid === 'local-user') {
+      setSyncStatus('offline');
+      return;
+    }
+
+    if (isInitialSyncMountRef.current) {
+      isInitialSyncMountRef.current = false;
+      return;
+    }
+
+    // Set status to pending immediately when state is mutated
+    setSyncStatus('pending');
 
     const timer = setTimeout(async () => {
+      setSyncStatus('syncing');
       setSaveLoading(true);
       const supabase = getSupabase();
       if (!supabase) {
         setSaveLoading(false);
+        setSyncStatus('error');
+        setFirestoreWriteError('Supabase não configurado');
         return;
       }
 
@@ -1436,6 +1558,7 @@ export default function App() {
         const dataToSave = {
           user,
           accounts,
+          accountHistory,
           budgetAccounts,
           transactions,
           cards,
@@ -1452,6 +1575,7 @@ export default function App() {
           me4Exclusions,
           me4Highlights,
           notes,
+          checklists,
           planEntries,
           planIncomes,
           planCards,
@@ -1482,14 +1606,17 @@ export default function App() {
           console.warn("Supabase upsert failed (retaining offline copy):", saveErr);
           setFirestoreWriteError(`Falha ao salvar dados na nuvem: ${saveErr.message}`);
           setIsOffline(true);
+          setSyncStatus('error');
         } else {
           setIsOffline(false);
           setFirestoreWriteError(null);
           setCloudLastSynced(nowStr);
+          setSyncStatus('synced');
         }
       } catch (err: any) {
         console.warn('Error saving data to Supabase (using local fallback):', err);
         setFirestoreWriteError(`Erro ao conectar ao Supabase: ${err.message}`);
+        setSyncStatus('error');
       } finally {
         setSaveLoading(false);
       }
@@ -1501,6 +1628,7 @@ export default function App() {
     dataLoadedFromFirestore,
     user,
     accounts,
+    accountHistory,
     budgetAccounts,
     transactions,
     cards,
@@ -1520,6 +1648,7 @@ export default function App() {
     me4Exclusions,
     me4Highlights,
     notes,
+    checklists,
     activePlanMonth,
     escalaTurnos,
     escalaDays,
@@ -1673,6 +1802,7 @@ export default function App() {
           me4Exclusions,
           me4Highlights,
           notes,
+          checklists,
           planEntries,
           planIncomes,
           planCards,
@@ -2315,6 +2445,15 @@ export default function App() {
     };
 
     setAccounts(prev => [...prev, newAcc]);
+    logAccountHistory(
+      newAcc.id,
+      'criacao',
+      0,
+      initialBal,
+      `Conta criada com saldo inicial de R$ ${initialBal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      initialBal
+    );
+
     setNewAccountName('');
     setNewAccountBalance('');
     setNewAccountColor('brand-primary');
@@ -2341,6 +2480,32 @@ export default function App() {
     }
 
     const updatedBal = parseFloat(editAccountBalance.replace(',', '.')) || 0;
+    const prevBalance = editingAccount.balance;
+    const isBalanceChanged = Math.abs(updatedBal - prevBalance) > 0.001;
+    const isNameChanged = editAccountName.trim() !== editingAccount.name;
+    const isColorChanged = editAccountColor !== (editingAccount.color || 'brand-primary');
+
+    if (isBalanceChanged || isNameChanged || isColorChanged) {
+      let desc = '';
+      if (isBalanceChanged && isNameChanged) {
+        desc = `Saldo ajustado de R$ ${prevBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para R$ ${updatedBal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} e nome alterado para "${editAccountName.trim()}"`;
+      } else if (isBalanceChanged) {
+        desc = `Saldo editado de R$ ${prevBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para R$ ${updatedBal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      } else if (isNameChanged) {
+        desc = `Nome alterado de "${editingAccount.name}" para "${editAccountName.trim()}"`;
+      } else {
+        desc = `Cor e dados visuais da conta atualizados`;
+      }
+
+      logAccountHistory(
+        editingAccount.id,
+        'edicao',
+        prevBalance,
+        updatedBal,
+        desc,
+        isBalanceChanged ? updatedBal - prevBalance : undefined
+      );
+    }
     
     setAccounts(prev => prev.map(acc => {
       if (acc.id === editingAccount.id) {
@@ -2463,16 +2628,27 @@ export default function App() {
 
     const isAddition = adjustingType === 'somar';
     const change = isAddition ? amount : -amount;
+    const prevBalance = selectedAdjustingAccount.balance;
+    const newBal = prevBalance + change;
     
     setAccounts(prev => prev.map(acc => {
       if (acc.id === selectedAdjustingAccount.id) {
         return {
           ...acc,
-          balance: acc.balance + change
+          balance: newBal
         };
       }
       return acc;
     }));
+
+    logAccountHistory(
+      selectedAdjustingAccount.id,
+      isAddition ? 'soma' : 'subtracao',
+      prevBalance,
+      newBal,
+      `${isAddition ? 'Depósito' : 'Retirada'} de R$ ${amount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      change
+    );
 
     setAdjustmentAmount('');
     setIsAdjustBalanceModalOpen(false);
@@ -2501,6 +2677,7 @@ export default function App() {
       const keysToBackup = [
         'nocturne_user',
         'nocturne_accounts',
+        'nocturne_account_history',
         'nocturne_budget_accounts',
         'nocturne_transactions',
         'nocturne_cards',
@@ -2520,6 +2697,7 @@ export default function App() {
         'nocturne_me4_exclusions',
         'nocturne_me4_highlights',
         'nocturne_notes',
+        'nocturne_checklists',
         'nocturne_escala_turnos',
         'nocturne_escala_days',
         'nocturne_thelist_entries',
@@ -2564,6 +2742,7 @@ export default function App() {
         const keysToRestore = [
           'nocturne_user',
           'nocturne_accounts',
+          'nocturne_account_history',
           'nocturne_budget_accounts',
           'nocturne_transactions',
           'nocturne_cards',
@@ -2616,6 +2795,9 @@ export default function App() {
           const bAccs = JSON.parse(backupData['nocturne_accounts']!) as Account[];
           setAccounts(bAccs.map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc));
         }
+        if (backupData['nocturne_account_history']) {
+          setAccountHistory(JSON.parse(backupData['nocturne_account_history']!));
+        }
         if (backupData['nocturne_budget_accounts']) {
           const bBudgetAccs = JSON.parse(backupData['nocturne_budget_accounts']!) as Account[];
           setBudgetAccounts(bBudgetAccs.map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc));
@@ -2644,6 +2826,7 @@ export default function App() {
         if (backupData['nocturne_me4_exclusions']) setMe4Exclusions(JSON.parse(backupData['nocturne_me4_exclusions']!));
         if (backupData['nocturne_me4_highlights']) setMe4Highlights(JSON.parse(backupData['nocturne_me4_highlights']!));
         if (backupData['nocturne_notes']) setNotes(JSON.parse(backupData['nocturne_notes']!));
+        if (backupData['nocturne_checklists']) setChecklists(JSON.parse(backupData['nocturne_checklists']!));
         if (backupData['nocturne_escala_turnos']) setEscalaTurnos(JSON.parse(backupData['nocturne_escala_turnos']!));
         if (backupData['nocturne_escala_days']) setEscalaDays(JSON.parse(backupData['nocturne_escala_days']!));
         if (backupData['nocturne_thelist_entries']) setTheListEntries(JSON.parse(backupData['nocturne_thelist_entries']!));
@@ -2682,6 +2865,7 @@ export default function App() {
             const parsedMe4Exclusions = backupData['nocturne_me4_exclusions'] ? JSON.parse(backupData['nocturne_me4_exclusions']!) : me4Exclusions;
             const parsedMe4Highlights = backupData['nocturne_me4_highlights'] ? JSON.parse(backupData['nocturne_me4_highlights']!) : me4Highlights;
             const parsedNotes = backupData['nocturne_notes'] ? JSON.parse(backupData['nocturne_notes']!) : notes;
+            const parsedChecklists = backupData['nocturne_checklists'] ? JSON.parse(backupData['nocturne_checklists']!) : checklists;
             const parsedEscalaTurnos = backupData['nocturne_escala_turnos'] ? JSON.parse(backupData['nocturne_escala_turnos']!) : escalaTurnos;
             const parsedEscalaDays = backupData['nocturne_escala_days'] ? JSON.parse(backupData['nocturne_escala_days']!) : escalaDays;
             const parsedTheListEntries = backupData['nocturne_thelist_entries'] ? JSON.parse(backupData['nocturne_thelist_entries']!) : theListEntries;
@@ -2711,6 +2895,7 @@ export default function App() {
               me4Exclusions: parsedMe4Exclusions,
               me4Highlights: parsedMe4Highlights,
               notes: parsedNotes,
+              checklists: parsedChecklists,
               planEntries: parsedPlanEntries,
               planIncomes: parsedPlanIncomes,
               planCards: parsedPlanCards,
@@ -2762,17 +2947,22 @@ export default function App() {
   const handleManualSync = async () => {
     if (!firebaseUser) {
       triggerToast('Você precisa estar logado para sincronizar com a nuvem.');
+      setSyncStatus('offline');
       return;
     }
     if (firebaseUser.uid === 'local-user') {
       triggerToast('Modo Offline: não é possível salvar na nuvem.');
+      setSyncStatus('offline');
       return;
     }
     
+    setSyncStatus('syncing');
     setSaveLoading(true);
     const supabase = getSupabase();
     if (!supabase) {
       triggerToast('Supabase não configurado.');
+      setFirestoreWriteError('Supabase não configurado');
+      setSyncStatus('error');
       setSaveLoading(false);
       return;
     }
@@ -2797,6 +2987,7 @@ export default function App() {
         me4Exclusions,
         me4Highlights,
         notes,
+        checklists,
         planEntries,
         planIncomes,
         planCards,
@@ -2826,15 +3017,21 @@ export default function App() {
       if (saveErr) {
         console.warn("Supabase manual upsert failed (using local sync):", saveErr);
         triggerToast(`Erro ao sincronizar: ${saveErr.message}`);
+        setFirestoreWriteError(`Falha ao sincronizar: ${saveErr.message}`);
+        setIsOffline(true);
+        setSyncStatus('error');
       } else {
         triggerToast('Sincronizado com a nuvem com sucesso!');
         setCloudLastSynced(nowStr);
         setIsOffline(false);
         setFirestoreWriteError(null);
+        setSyncStatus('synced');
       }
     } catch (err: any) {
       console.warn('Error in manual sync:', err);
       triggerToast(`Erro ao sincronizar: ${err.message || err}`);
+      setFirestoreWriteError(`Erro ao sincronizar: ${err.message || err}`);
+      setSyncStatus('error');
     } finally {
       setSaveLoading(false);
     }
@@ -2955,14 +3152,14 @@ export default function App() {
         >
           <div className="flex flex-col items-center text-center space-y-3" id="welcome-brand">
             <img 
-              src="/favicon.jpg" 
-              alt="Nocturne Logo" 
+              src="/nexus3.png" 
+              alt="NEXUS Logo" 
               className="w-12 h-12 rounded-2xl shadow-md border border-brand-primary/30 object-cover"
               referrerPolicy="no-referrer"
               id="brand-emblem-img"
             />
             <span className="text-[10px] text-brand-primary font-mono tracking-widest font-black uppercase">
-              Nocturne • Supabase
+              NEXUS • Supabase
             </span>
             <h1 className="text-2xl font-display font-black text-white tracking-tight">
               Configuração do Supabase Necessária
@@ -2972,7 +3169,7 @@ export default function App() {
           <div className="text-xs text-text-high leading-relaxed space-y-4 bg-bg-base/50 p-6 rounded-2xl border border-outline-variant/30">
             <p className="font-semibold text-brand-primary uppercase tracking-wider text-[10px]">Passo 1: Crie a Tabela no SQL Editor do Supabase</p>
             <p className="text-text-muted">
-              Abra seu painel do Supabase, vá em <strong>SQL Editor</strong>, crie uma nova query e execute o comando abaixo para criar a tabela de dados do Nocturne:
+              Abra seu painel do Supabase, vá em <strong>SQL Editor</strong>, crie uma nova query e execute o comando abaixo para criar a tabela de dados do NEXUS:
             </p>
             <pre className="p-3 bg-zinc-950 rounded-xl border border-white/5 font-mono text-[10px] text-emerald-400 overflow-x-auto select-all max-h-40 overflow-y-auto">
 {`create table if not exists public.nocturne_data (
@@ -3023,14 +3220,14 @@ create policy "Users can update own data" on public.nocturne_data
           
           <div className="flex flex-col items-center text-center space-y-3" id="welcome-brand">
             <img 
-              src="/favicon.jpg" 
-              alt="Nocturne Logo" 
+              src="/nexus3.png" 
+              alt="NEXUS Logo" 
               className="w-12 h-12 rounded-2xl shadow-md border border-brand-primary/30 object-cover"
               referrerPolicy="no-referrer"
               id="brand-emblem-img"
             />
             <h1 className="text-3xl font-display font-black text-white tracking-tight">
-              Nocturne
+              NEXUS
             </h1>
           </div>
 
@@ -3102,13 +3299,13 @@ create policy "Users can update own data" on public.nocturne_data
           {/* Logo Brand Header */}
           <div className="flex items-center gap-3 pb-5 border-b border-outline-variant/10" id="desktop-sidebar-brand">
             <img 
-              src="/favicon.jpg" 
-              alt="Nocturne Logo" 
+              src="/nexus3.png" 
+              alt="NEXUS Logo" 
               className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
               referrerPolicy="no-referrer"
             />
             <div>
-              <h1 className="text-sm font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
+              <h1 className="text-lg font-black tracking-wider text-white uppercase font-display leading-tight">NEXUS</h1>
             </div>
           </div>
 
@@ -3485,6 +3682,18 @@ create policy "Users can update own data" on public.nocturne_data
             </button>
           </nav>
         </div>
+
+        {/* Sync Status Box at the Bottom of Desktop Sidebar */}
+        <div className="pt-4 border-t border-outline-variant/15 mt-4 shrink-0" id="desktop-sidebar-sync-status">
+          <SyncStatusIndicator
+            status={syncStatus}
+            lastSynced={cloudLastSynced}
+            errorMessage={firestoreWriteError}
+            isOffline={isOffline || !firebaseUser || firebaseUser.uid === 'local-user'}
+            onManualSync={handleManualSync}
+            variant="desktop"
+          />
+        </div>
       </aside>
 
       {/* Dynamic Toast Message */}
@@ -3516,66 +3725,75 @@ create policy "Users can update own data" on public.nocturne_data
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant/10 md:hidden" id="app-brand-header">
           <div className="flex items-center gap-3">
             <img 
-              src="/favicon.jpg" 
-              alt="Nocturne Logo" 
+              src="/nexus3.png" 
+              alt="NEXUS Logo" 
               className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
               referrerPolicy="no-referrer"
             />
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-black tracking-tight text-white uppercase font-display leading-tight">Nocturne</h1>
-                {isOffline && (
-                  <span className="px-1.5 py-0.5 text-[8px] font-mono bg-amber-500/15 border border-amber-500/35 text-amber-500 rounded font-semibold uppercase tracking-wider">Offline</span>
-                )}
+                <h1 className="text-xl font-black tracking-wider text-white uppercase font-display leading-tight">NEXUS</h1>
               </div>
             </div>
           </div>
 
-          {activeScreen === 'fuel' && (
-            <button
-              type="button"
-              onClick={() => setFuelSubView(prev => prev === 'list' ? 'analysis' : 'list')}
-              className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 px-3 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-              id="btn-fuel-toggle-analysis-mobile"
-            >
-              {fuelSubView === 'list' ? (
-                <>
-                  <TrendingUp size={12} strokeWidth={2.5} />
-                  <span>ANÁLISE</span>
-                </>
-              ) : (
-                <>
-                  <ArrowLeft size={12} strokeWidth={2.5} />
-                  <span>VOLTAR</span>
-                </>
-              )}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* Mobile Sync Status Indicator */}
+            <SyncStatusIndicator
+              status={syncStatus}
+              lastSynced={cloudLastSynced}
+              errorMessage={firestoreWriteError}
+              isOffline={isOffline || !firebaseUser || firebaseUser.uid === 'local-user'}
+              onManualSync={handleManualSync}
+              variant="mobile"
+            />
 
-          {activeScreen === 'missoes' && (
-            <button
-              type="button"
-              onClick={() => setHistoricoIsAfastamentosView(prev => !prev)}
-              className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 px-3 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-              id="btn-historico-toggle-afastamentos-mobile"
-            >
-              {historicoIsAfastamentosView ? (
-                <>
-                  <ArrowLeft size={12} strokeWidth={2.5} />
-                  <span>VOLTAR</span>
-                </>
-              ) : (
-                <>
-                  <Plane size={12} strokeWidth={2.5} />
-                  <span>AFASTAMENTOS</span>
-                </>
-              )}
-            </button>
-          )}
+            {activeScreen === 'fuel' && (
+              <button
+                type="button"
+                onClick={() => setFuelSubView(prev => prev === 'list' ? 'analysis' : 'list')}
+                className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 px-3 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                id="btn-fuel-toggle-analysis-mobile"
+              >
+                {fuelSubView === 'list' ? (
+                  <>
+                    <TrendingUp size={12} strokeWidth={2.5} />
+                    <span>ANÁLISE</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowLeft size={12} strokeWidth={2.5} />
+                    <span>VOLTAR</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            {activeScreen === 'missoes' && (
+              <button
+                type="button"
+                onClick={() => setHistoricoIsAfastamentosView(prev => !prev)}
+                className="bg-brand-primary hover:bg-brand-primary-hover text-bg-base font-black text-[10px] uppercase tracking-wider py-2 px-3 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                id="btn-historico-toggle-afastamentos-mobile"
+              >
+                {historicoIsAfastamentosView ? (
+                  <>
+                    <ArrowLeft size={12} strokeWidth={2.5} />
+                    <span>VOLTAR</span>
+                  </>
+                ) : (
+                  <>
+                    <Plane size={12} strokeWidth={2.5} />
+                    <span>AFASTAMENTOS</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
-        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && (
+        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'checklists' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && (
           <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
             {/* Left section: Title */}
             <div className="flex-1 min-w-0">
@@ -3587,6 +3805,7 @@ create policy "Users can update own data" on public.nocturne_data
                   {activeScreen === 'temp' && 'TEMP'}
                   {activeScreen === 'config' && 'SYSTEM'}
                   {activeScreen === 'notes' && 'SYSTEM / NOTES'}
+                  {activeScreen === 'checklists' && 'CHECKLISTS'}
                   {activeScreen === 'fab' && 'WORK'}
                   {activeScreen === 'contracheque' && 'CONTRACHEQUE'}
                   {activeScreen === 'missoes' && 'HISTÓRICO'}
@@ -3701,11 +3920,26 @@ create policy "Users can update own data" on public.nocturne_data
                   </button>
                 </div>
               ) : (
-                <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right">
-                  <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
-                  <span className="text-sm font-bold text-brand-primary font-mono">
-                    R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
+                <div className="bg-bg-surface-low border border-outline-variant/50 px-4 py-2 rounded-xl text-right flex items-center gap-3">
+                  <div className="text-right">
+                    <span className="text-[9px] text-text-muted uppercase tracking-wider block font-semibold">Patrimônio Líquido</span>
+                    <span className="text-sm font-bold text-brand-primary font-mono">
+                      {showNetWorth ? (
+                        `R$ ${totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      ) : (
+                        "R$ ••••••••"
+                      )}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleNetWorth}
+                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-outline-variant/30 text-text-muted hover:text-white transition-all cursor-pointer flex items-center justify-center"
+                    title={showNetWorth ? "Ocultar patrimônio" : "Mostrar patrimônio"}
+                    id="btn-toggle-networth-visibility"
+                  >
+                    {showNetWorth ? <EyeOff size={12} /> : <Eye size={12} />}
+                  </button>
                 </div>
               )}
             </div>
@@ -3917,9 +4151,23 @@ create policy "Users can update own data" on public.nocturne_data
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-bg-surface-low border border-outline-variant/50 p-4 rounded-xl flex flex-col justify-between">
                     <div>
-                      <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Total em Contas</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-text-muted uppercase tracking-wider block font-semibold">Total em Contas</span>
+                        <button
+                          type="button"
+                          onClick={toggleConsolidatedBalance}
+                          className="text-text-muted hover:text-white transition-all cursor-pointer p-0.5 rounded"
+                          title={showConsolidatedBalance ? "Ocultar saldos" : "Mostrar saldos"}
+                        >
+                          {showConsolidatedBalance ? <EyeOff size={11} /> : <Eye size={11} />}
+                        </button>
+                      </div>
                       <p className="text-lg font-bold text-white mt-1">
-                        R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {showConsolidatedBalance ? (
+                          `R$ ${totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        ) : (
+                          "R$ ••••••••"
+                        )}
                       </p>
                     </div>
                     <div className="text-[10px] text-green-400 flex items-center gap-1 mt-2 font-mono">
@@ -4399,7 +4647,7 @@ create policy "Users can update own data" on public.nocturne_data
               </div>
 
               <div className="text-center pt-2 text-[10px] text-text-muted">
-                Versão v8.1.4 • Nocturne
+                Versão v8.1.4 • NEXUS
               </div>
             </div>
           </motion.div>
@@ -4689,22 +4937,38 @@ create policy "Users can update own data" on public.nocturne_data
                   <div className="flex justify-between items-center relative z-10">
                     <div className="space-y-1">
                       <span className="text-[10px] text-brand-primary uppercase tracking-widest font-mono font-bold block">
-                        Ativo Consolidado
+                        Patrimônio Líquido
                       </span>
                       <h2 className="text-2xl font-display font-black text-white tracking-tight">
-                        R$ {totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {showConsolidatedBalance ? (
+                          `R$ ${totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        ) : (
+                          "R$ ••••••••"
+                        )}
                       </h2>
                     </div>
                     
-                    <button
-                      type="button"
-                      onClick={() => setIsPatrimonyHistoryView(true)}
-                      className="inline-flex items-center gap-1.5 bg-[#ffe08b]/10 hover:bg-[#ffe08b]/20 border border-[#ffe08b]/30 hover:border-[#ffe08b] text-[#ffe08b] text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-[#ffe08b]/5 shrink-0"
-                      id="btn-open-patrimony-history"
-                    >
-                      <History size={13} strokeWidth={2.5} />
-                      Histórico
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={toggleConsolidatedBalance}
+                        className="inline-flex items-center justify-center bg-white/5 hover:bg-white/10 border border-outline-variant/30 text-text-muted hover:text-white p-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md"
+                        id="btn-toggle-consolidated-visibility"
+                        title={showConsolidatedBalance ? "Ocultar saldo" : "Mostrar saldo"}
+                      >
+                        {showConsolidatedBalance ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsPatrimonyHistoryView(true)}
+                        className="inline-flex items-center gap-1.5 bg-[#ffe08b]/10 hover:bg-[#ffe08b]/20 border border-[#ffe08b]/30 hover:border-[#ffe08b] text-[#ffe08b] text-[10px] font-black uppercase tracking-wider px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer shadow-md shadow-[#ffe08b]/5 shrink-0"
+                        id="btn-open-patrimony-history"
+                      >
+                        <History size={13} strokeWidth={2.5} />
+                        Histórico
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -4734,6 +4998,10 @@ create policy "Users can update own data" on public.nocturne_data
                     <AccountItem
                       key={acc.id}
                       acc={acc}
+                      onViewHistory={(accToView) => {
+                        setSelectedHistoryAccount(accToView);
+                        setIsAccountHistoryModalOpen(true);
+                      }}
                       onEdit={(accToEdit) => {
                         setEditingAccount(accToEdit);
                         setEditAccountName(accToEdit.name);
@@ -4789,6 +5057,8 @@ create policy "Users can update own data" on public.nocturne_data
               accounts={accounts}
               activePlanMonth={activePlanMonth}
               setActivePlanMonth={setActivePlanMonth}
+              planMonth={planMonth}
+              setPlanMonth={setPlanMonth}
             />
           </motion.div>
         )}
@@ -5026,7 +5296,7 @@ create policy "Users can update own data" on public.nocturne_data
                 <span className="text-xs font-black text-white uppercase tracking-wider">Tools</span>
               </div>
               
-              <div className="grid grid-cols-2 gap-3" id="tools-buttons">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" id="tools-buttons">
                 <button
                   onClick={() => {
                     setActiveScreen('notes');
@@ -5048,6 +5318,30 @@ create policy "Users can update own data" on public.nocturne_data
                 >
                   <BookLock className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
                   <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">The List</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveScreen('checklists');
+                  }}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
+                  id="btn-tool-checklists"
+                >
+                  <ListChecks className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
+                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Checklists</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSpotifyModalOpen(true);
+                  }}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
+                  id="btn-tool-spotify"
+                >
+                  <Radio className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
+                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Spotify</span>
                 </button>
               </div>
             </div>
@@ -6280,6 +6574,36 @@ create policy "Users can update own data" on public.nocturne_data
           </motion.div>
         )}
 
+        {/* CHECKLISTS SCREEN */}
+        {activeScreen === 'checklists' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col space-y-6 text-left"
+            id="checklists-screen-view"
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveScreen('config');
+                }}
+                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
+                id="btn-back-to-config-from-checklists"
+              >
+                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
+              </button>
+            </div>
+
+            <ChecklistsScreen 
+              checklists={checklists} 
+              setChecklists={setChecklists} 
+              triggerToast={triggerToast}
+              theme={theme}
+            />
+          </motion.div>
+        )}
+
         </div>
       </main>
 
@@ -6638,6 +6962,12 @@ create policy "Users can update own data" on public.nocturne_data
         }}
         onSave={handleSaveTransaction}
         initialTransaction={editingTransaction}
+      />
+
+      {/* Spotify Playlist Auditor Modal */}
+      <SpotifyModal
+        isOpen={isSpotifyModalOpen}
+        onClose={() => setIsSpotifyModalOpen(false)}
       />
 
       {/* THE LIST PASSWORD MODAL */}
@@ -7264,6 +7594,17 @@ create policy "Users can update own data" on public.nocturne_data
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal: Histórico de Modificações da Conta */}
+      <AccountHistoryModal
+        isOpen={isAccountHistoryModalOpen}
+        onClose={() => {
+          setIsAccountHistoryModalOpen(false);
+          setSelectedHistoryAccount(null);
+        }}
+        account={selectedHistoryAccount}
+        historyEntries={accountHistory}
+      />
 
       {/* Modal de Análise de Saldo e Projeções */}
       <AnimatePresence>

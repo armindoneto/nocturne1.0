@@ -518,7 +518,7 @@ export default function TrophiesDashboard({ trophyEntries, onBack }: TrophiesDas
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
-                    labelClassName="text-white text-[11px] font-mono font-bold"
+                    labelStyle={{ color: '#ffffff', fontSize: '11px', fontFamily: 'monospace', fontWeight: 'bold' }}
                     itemStyle={{ color: trophyColor, fontSize: '11px', fontFamily: 'monospace' }}
                   />
                   <Bar dataKey="quantidade" fill={trophyColor} radius={[4, 4, 0, 0]} maxBarSize={14} />
@@ -552,7 +552,7 @@ export default function TrophiesDashboard({ trophyEntries, onBack }: TrophiesDas
                   />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
-                    labelClassName="text-white text-[11px] font-mono font-bold"
+                    labelStyle={{ color: '#ffffff', fontSize: '11px', fontFamily: 'monospace', fontWeight: 'bold' }}
                     itemStyle={{ color: trophyColor, fontSize: '11px', fontFamily: 'monospace' }}
                   />
                   <Bar dataKey="quantidade" fill={trophyColor} radius={[4, 4, 0, 0]} maxBarSize={32} />
@@ -582,8 +582,8 @@ export default function TrophiesDashboard({ trophyEntries, onBack }: TrophiesDas
                   <YAxis stroke="#888888" fontSize={10} fontFamily="monospace" tickLine={false} axisLine={false} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
-                    labelClassName="text-white text-[11px] font-mono font-bold"
-                    itemStyle={{ fontSize: '11px', fontFamily: 'monospace' }}
+                    labelStyle={{ color: '#ffffff', fontSize: '11px', fontFamily: 'monospace', fontWeight: 'bold' }}
+                    itemStyle={{ fontSize: '11px', fontFamily: 'monospace', color: '#ffffff' }}
                   />
                   <Legend 
                     verticalAlign="bottom" 
@@ -656,6 +656,7 @@ export default function TrophiesDashboard({ trophyEntries, onBack }: TrophiesDas
                       </Pie>
                       <Tooltip
                         contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
+                        labelStyle={{ color: '#ffffff', fontSize: '11px', fontFamily: 'monospace', fontWeight: 'bold' }}
                         itemStyle={{ fontSize: '11px', fontFamily: 'monospace', color: '#fff' }}
                       />
                     </PieChart>
@@ -718,6 +719,7 @@ export default function TrophiesDashboard({ trophyEntries, onBack }: TrophiesDas
                       </Pie>
                       <Tooltip
                         contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
+                        labelStyle={{ color: '#ffffff', fontSize: '11px', fontFamily: 'monospace', fontWeight: 'bold' }}
                         itemStyle={{ fontSize: '11px', fontFamily: 'monospace', color: '#fff' }}
                       />
                     </PieChart>

@@ -2,7 +2,7 @@ const CACHE_NAME = 'nocturne-v1.1.0';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/favicon.jpg'
+  '/nexus3.png'
 ];
 
 self.addEventListener('install', (event) => {

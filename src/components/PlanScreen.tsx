@@ -42,17 +42,32 @@ export default function PlanScreen({
   triggerToast,
   accounts,
   activePlanMonth = '2026-06',
-  setActivePlanMonth
+  setActivePlanMonth,
+  planMonth,
+  setPlanMonth
 }: PlanScreenProps) {
-  // Use activePlanMonth as base default starting month
-  const [currentMonth, setCurrentMonth] = useState(activePlanMonth);
-  
-  // Keep currentMonth in sync with loaded activePlanMonth
-  useEffect(() => {
-    if (activePlanMonth) {
-      setCurrentMonth(activePlanMonth);
+  // Use planMonth if provided, otherwise fallback to internal currentMonth
+  const [internalCurrentMonth, setInternalCurrentMonth] = useState(planMonth || activePlanMonth);
+  const currentMonth = planMonth !== undefined ? planMonth : internalCurrentMonth;
+
+  const setCurrentMonth = (action: React.SetStateAction<string>) => {
+    if (setPlanMonth) {
+      if (typeof action === 'function') {
+        setPlanMonth(action(currentMonth));
+      } else {
+        setPlanMonth(action);
+      }
+    } else {
+      setInternalCurrentMonth(action);
     }
-  }, [activePlanMonth]);
+  };
+  
+  // Sync internal view month only if planMonth is not externally controlled
+  useEffect(() => {
+    if (activePlanMonth && planMonth === undefined) {
+      setInternalCurrentMonth(activePlanMonth);
+    }
+  }, [activePlanMonth, planMonth]);
 
   // Recursively or iteratively calculate the projected balance of accounts starting from the Active Month
   const getAccountBalanceProjection = (accountId: string, monthStr: string) => {
@@ -685,7 +700,6 @@ export default function PlanScreen({
                   onClick={() => {
                     if (setActivePlanMonth) {
                       setActivePlanMonth(monthStr);
-                      setCurrentMonth(monthStr);
                       triggerToast(`"${formatMonthName(monthStr)}" definido como Mês Ativo!`);
                     }
                   }}
