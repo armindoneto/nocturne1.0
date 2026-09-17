@@ -1645,7 +1645,7 @@ export default function GamesScreen({
                   POKÉDEX
                 </h3>
                 <p className="text-xs font-mono font-bold text-text-muted uppercase tracking-wider">
-                  Total de Pokémon Únicos: <span className="text-red-400 font-black text-sm">{totalUniquePokemons}</span>
+                  Pokémons: <span className="text-red-400 font-black text-sm">{totalUniquePokemons}</span>
                 </p>
               </div>
 

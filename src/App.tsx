@@ -2262,8 +2262,43 @@ export default function App() {
         return acc;
       }));
 
+      // Se for um novo gasto com a conta PIX, subtrai automaticamente da conta cadastrada como PIX no menu Contas
+      const isPixExpense = createdTx.amount < 0 && createdTx.account?.trim().toLowerCase() === 'pix';
+      if (isPixExpense) {
+        const expenseAmount = Math.abs(createdTx.amount);
+        const targetPixAcc = accounts.find(a => a.name.trim().toLowerCase() === 'pix');
+        if (targetPixAcc) {
+          const prevBal = targetPixAcc.balance;
+          const newBal = prevBal - expenseAmount;
+
+          setAccounts(prev => prev.map(acc => {
+            if (acc.id === targetPixAcc.id) {
+              return { ...acc, balance: acc.balance - expenseAmount };
+            }
+            return acc;
+          }));
+
+          const descText = createdTx.description?.trim()
+            ? `Retirada de R$ ${expenseAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${createdTx.description.trim()})`
+            : `Retirada de R$ ${expenseAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+          logAccountHistory(
+            targetPixAcc.id,
+            'subtracao',
+            prevBal,
+            newBal,
+            descText,
+            -expenseAmount
+          );
+        }
+      }
+
       setTransactions(prev => [createdTx, ...prev]);
-      triggerToast('Novo lançamento registrado.');
+      if (isPixExpense) {
+        triggerToast('Novo lançamento registrado e valor debitado da conta PIX.');
+      } else {
+        triggerToast('Novo lançamento registrado.');
+      }
     }
     setEditingTransaction(null);
   };
