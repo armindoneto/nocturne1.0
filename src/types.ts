@@ -258,4 +258,38 @@ export interface SystemVersions {
   app: string;
 }
 
+export type PokopiaHabitat = 
+  | 'Withered Wastelands'
+  | 'Rocky Ridges'
+  | 'Bleak Beach'
+  | 'Sparkling Skylands'
+  | 'Pallet Town'
+  | 'Befriended'
+  | 'Not Met';
+
+export type PokopiaComfort = 
+  | ''
+  | 'Awesome'
+  | 'Great'
+  | 'Nice'
+  | 'Average'
+  | 'Iffy';
+
+export interface PokopiaEntry {
+  id: string;
+  name: string;
+  habitat: PokopiaHabitat;
+  comfort: PokopiaComfort;
+  request: string;
+  requestCompleted?: boolean;
+  createdAt?: string;
+}
+
+export interface PokopiaScreenProps {
+  pokopiaEntries: PokopiaEntry[];
+  setPokopiaEntries: (value: PokopiaEntry[] | ((prev: PokopiaEntry[]) => PokopiaEntry[])) => void;
+  triggerToast: (msg: string) => void;
+  theme?: 'dark' | 'light';
+}
+
 

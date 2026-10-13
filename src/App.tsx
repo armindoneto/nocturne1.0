@@ -66,10 +66,11 @@ import {
   Eye,
   EyeOff,
   ListChecks,
-  Radio
+  Radio,
+  Compass
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, AccountHistoryEntry, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions, ChecklistCategory } from './types';
+import { Transaction, CreditCard, Account, AccountHistoryEntry, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions, ChecklistCategory, PokopiaEntry } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import SpotifyModal from './components/SpotifyModal';
@@ -100,6 +101,7 @@ import EscalaScreen from './components/EscalaScreen';
 import TheListScreen from './components/TheListScreen';
 import GamesScreen from './components/GamesScreen';
 import ChecklistsScreen from './components/ChecklistsScreen';
+import { PokopiaScreen } from './components/PokopiaScreen';
 import { AppNote } from './types';
 import { parseRawGames } from './gamesSeed';
 import { RAW_POKEMON_GEN1_TSV } from './pokemonSeed';
@@ -483,7 +485,7 @@ export default function App() {
   const [isAnalysisView, setIsAnalysisView] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist' | 'checklists'>('budget');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist' | 'checklists' | 'pokopia'>('budget');
   const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'system'>('finance');
   const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
   const [isWorkExpanded, setIsWorkExpanded] = useState(false);
@@ -817,6 +819,16 @@ export default function App() {
     return [];
   });
 
+  const [pokopiaEntries, setPokopiaEntries] = useState<PokopiaEntry[]>(() => {
+    const saved = localStorage.getItem('nocturne_pokopia');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as PokopiaEntry[];
+      } catch (_) {}
+    }
+    return [];
+  });
+
   // --- The List States ---
   const [theListEntries, setTheListEntries] = useState<TheListEntry[]>(() => {
     const saved = localStorage.getItem('nocturne_thelist_entries');
@@ -1111,6 +1123,10 @@ export default function App() {
   }, [checklists]);
 
   useEffect(() => {
+    localStorage.setItem('nocturne_pokopia', JSON.stringify(pokopiaEntries));
+  }, [pokopiaEntries]);
+
+  useEffect(() => {
     localStorage.setItem('nocturne_thelist_entries', JSON.stringify(theListEntries));
   }, [theListEntries]);
 
@@ -1296,6 +1312,7 @@ export default function App() {
               me4Exclusions,
               notes,
               checklists,
+              pokopiaEntries,
               planEntries,
               planIncomes,
               planCards,
@@ -1414,6 +1431,9 @@ export default function App() {
             }
             if (data.checklists !== undefined) {
               setChecklists(data.checklists);
+            }
+            if (data.pokopiaEntries !== undefined) {
+              setPokopiaEntries(data.pokopiaEntries);
             }
             if (data.escalaTurnos !== undefined) {
               setEscalaTurnos(data.escalaTurnos);
@@ -1576,6 +1596,7 @@ export default function App() {
           me4Highlights,
           notes,
           checklists,
+          pokopiaEntries,
           planEntries,
           planIncomes,
           planCards,
@@ -1649,6 +1670,7 @@ export default function App() {
     me4Highlights,
     notes,
     checklists,
+    pokopiaEntries,
     activePlanMonth,
     escalaTurnos,
     escalaDays,
@@ -2733,6 +2755,7 @@ export default function App() {
         'nocturne_me4_highlights',
         'nocturne_notes',
         'nocturne_checklists',
+        'nocturne_pokopia',
         'nocturne_escala_turnos',
         'nocturne_escala_days',
         'nocturne_thelist_entries',
@@ -2862,6 +2885,7 @@ export default function App() {
         if (backupData['nocturne_me4_highlights']) setMe4Highlights(JSON.parse(backupData['nocturne_me4_highlights']!));
         if (backupData['nocturne_notes']) setNotes(JSON.parse(backupData['nocturne_notes']!));
         if (backupData['nocturne_checklists']) setChecklists(JSON.parse(backupData['nocturne_checklists']!));
+        if (backupData['nocturne_pokopia']) setPokopiaEntries(JSON.parse(backupData['nocturne_pokopia']!));
         if (backupData['nocturne_escala_turnos']) setEscalaTurnos(JSON.parse(backupData['nocturne_escala_turnos']!));
         if (backupData['nocturne_escala_days']) setEscalaDays(JSON.parse(backupData['nocturne_escala_days']!));
         if (backupData['nocturne_thelist_entries']) setTheListEntries(JSON.parse(backupData['nocturne_thelist_entries']!));
@@ -2901,6 +2925,7 @@ export default function App() {
             const parsedMe4Highlights = backupData['nocturne_me4_highlights'] ? JSON.parse(backupData['nocturne_me4_highlights']!) : me4Highlights;
             const parsedNotes = backupData['nocturne_notes'] ? JSON.parse(backupData['nocturne_notes']!) : notes;
             const parsedChecklists = backupData['nocturne_checklists'] ? JSON.parse(backupData['nocturne_checklists']!) : checklists;
+            const parsedPokopiaEntries = backupData['nocturne_pokopia'] ? JSON.parse(backupData['nocturne_pokopia']!) : pokopiaEntries;
             const parsedEscalaTurnos = backupData['nocturne_escala_turnos'] ? JSON.parse(backupData['nocturne_escala_turnos']!) : escalaTurnos;
             const parsedEscalaDays = backupData['nocturne_escala_days'] ? JSON.parse(backupData['nocturne_escala_days']!) : escalaDays;
             const parsedTheListEntries = backupData['nocturne_thelist_entries'] ? JSON.parse(backupData['nocturne_thelist_entries']!) : theListEntries;
@@ -2931,6 +2956,7 @@ export default function App() {
               me4Highlights: parsedMe4Highlights,
               notes: parsedNotes,
               checklists: parsedChecklists,
+              pokopiaEntries: parsedPokopiaEntries,
               planEntries: parsedPlanEntries,
               planIncomes: parsedPlanIncomes,
               planCards: parsedPlanCards,
@@ -3023,6 +3049,7 @@ export default function App() {
         me4Highlights,
         notes,
         checklists,
+        pokopiaEntries,
         planEntries,
         planIncomes,
         planCards,
@@ -3828,7 +3855,7 @@ create policy "Users can update own data" on public.nocturne_data
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
-        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'checklists' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && (
+        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'checklists' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && activeScreen !== 'pokopia' && (
           <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
             {/* Left section: Title */}
             <div className="flex-1 min-w-0">
@@ -5331,7 +5358,7 @@ create policy "Users can update own data" on public.nocturne_data
                 <span className="text-xs font-black text-white uppercase tracking-wider">Tools</span>
               </div>
               
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" id="tools-buttons">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3" id="tools-buttons">
                 <button
                   onClick={() => {
                     setActiveScreen('notes');
@@ -5365,6 +5392,18 @@ create policy "Users can update own data" on public.nocturne_data
                 >
                   <ListChecks className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
                   <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Checklists</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveScreen('pokopia');
+                  }}
+                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
+                  id="btn-tool-pokopia"
+                >
+                  <Compass className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
+                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Pokopia</span>
                 </button>
 
                 <button
@@ -6639,6 +6678,36 @@ create policy "Users can update own data" on public.nocturne_data
           </motion.div>
         )}
 
+        {/* POKOPIA SCREEN */}
+        {activeScreen === 'pokopia' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col space-y-6 text-left"
+            id="pokopia-screen-view"
+          >
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveScreen('config');
+                }}
+                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
+                id="btn-back-to-config-from-pokopia"
+              >
+                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
+              </button>
+            </div>
+
+            <PokopiaScreen 
+              pokopiaEntries={pokopiaEntries} 
+              setPokopiaEntries={setPokopiaEntries} 
+              triggerToast={triggerToast}
+              theme={theme}
+            />
+          </motion.div>
+        )}
+
         </div>
       </main>
 
@@ -6649,7 +6718,7 @@ create policy "Users can update own data" on public.nocturne_data
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 15 }}
-            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            className="fixed bottom-20 left-4 right-4 z-55 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
             id="mobile-finance-subnav"
           >
             <button
@@ -6715,7 +6784,7 @@ create policy "Users can update own data" on public.nocturne_data
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 15 }}
-            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            className="fixed bottom-20 left-4 right-4 z-55 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
             id="mobile-work-subnav"
           >
             <button
@@ -6780,7 +6849,7 @@ create policy "Users can update own data" on public.nocturne_data
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 15 }}
-            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            className="fixed bottom-20 left-4 right-4 z-55 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
             id="mobile-fuel-subnav"
           >
             <button
@@ -6806,7 +6875,7 @@ create policy "Users can update own data" on public.nocturne_data
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 15 }}
-            className="absolute bottom-20 left-4 right-4 z-45 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            className="fixed bottom-20 left-4 right-4 z-55 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-4 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
             id="mobile-games-subnav"
           >
             <button
@@ -6856,7 +6925,7 @@ create policy "Users can update own data" on public.nocturne_data
 
       {/* Fixed bottom menu bar with active dynamic states */}
       <div 
-        className="absolute bottom-0 left-0 right-0 z-40 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-6 py-3.5 flex items-center justify-around md:hidden" 
+        className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-6 py-3.5 flex items-center justify-around md:hidden" 
         id="bottom-menu-bar"
       >
         <button
