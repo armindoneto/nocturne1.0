@@ -255,6 +255,7 @@ export interface SystemVersions {
   work: string;
   fuel: string;
   games: string;
+  tools: string;
   app: string;
 }
 
@@ -291,5 +292,18 @@ export interface PokopiaScreenProps {
   triggerToast: (msg: string) => void;
   theme?: 'dark' | 'light';
 }
+export interface SharedFileItem {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  uploadedAt: string; // ISO string
+  dataUrl: string; // Base64 data URL
+}
 
-
+export interface ShareScreenProps {
+  sharedFile: SharedFileItem | null;
+  setSharedFile: (file: SharedFileItem | null | ((prev: SharedFileItem | null) => SharedFileItem | null)) => void;
+  triggerToast: (msg: string) => void;
+  theme?: 'dark' | 'light';
+}

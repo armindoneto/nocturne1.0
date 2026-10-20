@@ -67,10 +67,11 @@ import {
   EyeOff,
   ListChecks,
   Radio,
-  Compass
+  Compass,
+  Share2
 } from 'lucide-react';
 
-import { Transaction, CreditCard, Account, AccountHistoryEntry, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions, ChecklistCategory, PokopiaEntry } from './types';
+import { Transaction, CreditCard, Account, AccountHistoryEntry, UserProfile, ActiveTab, TempCategory, TempEntry, PatrimonyEntry, PlanEntry, PlanCard, FuelEntry, ContrachequeEntry, HistoricoEntry, ME4Exclusion, EscalaTurno, EscalaDay, TheListEntry, GameTrophyEntry, ToPlayConsole, PokemonGeneration, PokemonEntry, SystemVersions, ChecklistCategory, PokopiaEntry, SharedFileItem } from './types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { getSupabase, isSupabaseConfigured } from './supabase';
 import SpotifyModal from './components/SpotifyModal';
@@ -102,6 +103,7 @@ import TheListScreen from './components/TheListScreen';
 import GamesScreen from './components/GamesScreen';
 import ChecklistsScreen from './components/ChecklistsScreen';
 import { PokopiaScreen } from './components/PokopiaScreen';
+import { ShareScreen } from './components/ShareScreen';
 import { AppNote } from './types';
 import { parseRawGames } from './gamesSeed';
 import { RAW_POKEMON_GEN1_TSV } from './pokemonSeed';
@@ -485,12 +487,13 @@ export default function App() {
   const [isAnalysisView, setIsAnalysisView] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist' | 'checklists' | 'pokopia'>('budget');
-  const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'system'>('finance');
+  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist' | 'checklists' | 'pokopia' | 'share'>('budget');
+  const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'tools' | 'system'>('finance');
   const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
   const [isWorkExpanded, setIsWorkExpanded] = useState(false);
   const [isFuelExpanded, setIsFuelExpanded] = useState(false);
   const [isGamesExpanded, setIsGamesExpanded] = useState(false);
+  const [isToolsExpanded, setIsToolsExpanded] = useState(false);
   const [gamesSubmenu, setGamesSubmenu] = useState<'TROPHIES' | 'POKÉMON' | 'TO PLAY'>('TROPHIES');
   const [showMobileSubmenu, setShowMobileSubmenu] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
@@ -577,11 +580,25 @@ export default function App() {
   // --- System Versions States ---
   const [systemVersions, setSystemVersions] = useState<SystemVersions>(() => {
     const saved = localStorage.getItem('nocturne_system_versions');
-    return saved ? JSON.parse(saved) : {
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          finance: parsed.finance || 'v8.1.5',
+          work: parsed.work || 'v2.0.5',
+          fuel: parsed.fuel || 'v2.0.0',
+          games: parsed.games || 'v3.1.1',
+          tools: parsed.tools || 'v1.0.0',
+          app: parsed.app || 'v2.1.9'
+        };
+      } catch (_) {}
+    }
+    return {
       finance: 'v8.1.5',
       work: 'v2.0.5',
       fuel: 'v2.0.0',
       games: 'v3.1.1',
+      tools: 'v1.0.0',
       app: 'v2.1.9'
     };
   });
@@ -591,6 +608,7 @@ export default function App() {
   const [tempVersionWork, setTempVersionWork] = useState('');
   const [tempVersionFuel, setTempVersionFuel] = useState('');
   const [tempVersionGames, setTempVersionGames] = useState('');
+  const [tempVersionTools, setTempVersionTools] = useState('');
   const [tempVersionApp, setTempVersionApp] = useState('');
 
   useEffect(() => {
@@ -599,6 +617,7 @@ export default function App() {
       setTempVersionWork(systemVersions.work);
       setTempVersionFuel(systemVersions.fuel);
       setTempVersionGames(systemVersions.games);
+      setTempVersionTools(systemVersions.tools || 'v1.0.0');
       setTempVersionApp(systemVersions.app);
     }
   }, [isEditVersionsModalOpen, systemVersions]);
@@ -827,6 +846,16 @@ export default function App() {
       } catch (_) {}
     }
     return [];
+  });
+
+  const [sharedFile, setSharedFile] = useState<SharedFileItem | null>(() => {
+    const saved = localStorage.getItem('nocturne_shared_file');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as SharedFileItem;
+      } catch (_) {}
+    }
+    return null;
   });
 
   // --- The List States ---
@@ -1127,6 +1156,14 @@ export default function App() {
   }, [pokopiaEntries]);
 
   useEffect(() => {
+    if (sharedFile) {
+      localStorage.setItem('nocturne_shared_file', JSON.stringify(sharedFile));
+    } else {
+      localStorage.removeItem('nocturne_shared_file');
+    }
+  }, [sharedFile]);
+
+  useEffect(() => {
     localStorage.setItem('nocturne_thelist_entries', JSON.stringify(theListEntries));
   }, [theListEntries]);
 
@@ -1313,6 +1350,7 @@ export default function App() {
               notes,
               checklists,
               pokopiaEntries,
+              sharedFile,
               planEntries,
               planIncomes,
               planCards,
@@ -1434,6 +1472,9 @@ export default function App() {
             }
             if (data.pokopiaEntries !== undefined) {
               setPokopiaEntries(data.pokopiaEntries);
+            }
+            if (data.sharedFile !== undefined) {
+              setSharedFile(data.sharedFile);
             }
             if (data.escalaTurnos !== undefined) {
               setEscalaTurnos(data.escalaTurnos);
@@ -1597,6 +1638,7 @@ export default function App() {
           notes,
           checklists,
           pokopiaEntries,
+          sharedFile,
           planEntries,
           planIncomes,
           planCards,
@@ -1671,6 +1713,7 @@ export default function App() {
     notes,
     checklists,
     pokopiaEntries,
+    sharedFile,
     activePlanMonth,
     escalaTurnos,
     escalaDays,
@@ -1825,6 +1868,8 @@ export default function App() {
           me4Highlights,
           notes,
           checklists,
+          pokopiaEntries,
+          sharedFile,
           planEntries,
           planIncomes,
           planCards,
@@ -1876,6 +1921,7 @@ export default function App() {
       setMe4Highlights([]);
       setTheListEntries([]);
       setTheListYearCounts({});
+      setSharedFile(null);
       setTrophyEntries(parseRawGames());
       setPatrimonyHistory([
         { id: 'pe-1', monthYear: '02/2026', amount: 48000.00 },
@@ -2722,6 +2768,7 @@ export default function App() {
       work: tempVersionWork,
       fuel: tempVersionFuel,
       games: tempVersionGames,
+      tools: tempVersionTools,
       app: tempVersionApp
     });
     setIsEditVersionsModalOpen(false);
@@ -3725,6 +3772,138 @@ create policy "Users can update own data" on public.nocturne_data
               </AnimatePresence>
             </div>
 
+            {/* TOOLS MODULE (Collapsible) */}
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsToolsExpanded(!isToolsExpanded);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-xs font-black tracking-widest uppercase font-display transition-all cursor-pointer border ${
+                  activeModule === 'tools'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/10'
+                    : 'text-text-muted hover:text-text-high hover:bg-white/5 border border-transparent'
+                }`}
+                id="btn-sidebar-module-tools"
+              >
+                <div className="flex items-center gap-3">
+                  <Wrench size={16} />
+                  <span>TOOLS</span>
+                </div>
+                {isToolsExpanded ? <ChevronUp size={14} className="text-text-muted" /> : <ChevronDown size={14} className="text-text-muted" />}
+              </button>
+
+              <AnimatePresence initial={false}>
+                {isToolsExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden pl-4 space-y-1"
+                    id="tools-submenu-container"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('notes');
+                        setActiveModule('tools');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'notes' && activeModule === 'tools'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-tools-notes"
+                    >
+                      <ScrollText size={14} />
+                      <span>NOTES</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveModule('tools');
+                        setIsTheListPasswordModalOpen(true);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'thelist' && activeModule === 'tools'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-tools-thelist"
+                    >
+                      <BookLock size={14} />
+                      <span>THE LIST</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('checklists');
+                        setActiveModule('tools');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'checklists' && activeModule === 'tools'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-tools-checklists"
+                    >
+                      <ListChecks size={14} />
+                      <span>CHECKLISTS</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('pokopia');
+                        setActiveModule('tools');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'pokopia' && activeModule === 'tools'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-tools-pokopia"
+                    >
+                      <Compass size={14} />
+                      <span>POKOPIA</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveScreen('share');
+                        setActiveModule('tools');
+                      }}
+                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer ${
+                        activeScreen === 'share' && activeModule === 'tools'
+                          ? 'text-brand-primary bg-brand-primary/5'
+                          : 'text-text-muted hover:text-text-high hover:bg-white/5'
+                      }`}
+                      id="btn-sidebar-tools-share"
+                    >
+                      <Share2 size={14} />
+                      <span>SHARE</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSpotifyModalOpen(true);
+                      }}
+                      className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-[10px] font-black tracking-widest uppercase font-display transition-all cursor-pointer text-text-muted hover:text-text-high hover:bg-white/5"
+                      id="btn-sidebar-tools-spotify"
+                    >
+                      <Radio size={14} />
+                      <span>SPOTIFY</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
             {/* SYSTEM MODULE */}
             <button
               type="button"
@@ -3855,7 +4034,7 @@ create policy "Users can update own data" on public.nocturne_data
         </div>
 
         {/* Desktop Page Title Header (Visible on Desktop only) */}
-        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'checklists' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && activeScreen !== 'pokopia' && (
+        {activeScreen !== 'me4' && activeScreen !== 'notes' && activeScreen !== 'checklists' && activeScreen !== 'escala' && activeScreen !== 'thelist' && activeScreen !== 'games' && activeScreen !== 'pokopia' && activeScreen !== 'share' && (
           <div className="hidden md:flex justify-between items-center mb-6 pb-4 border-b border-outline-variant/10" id="desktop-page-header">
             {/* Left section: Title */}
             <div className="flex-1 min-w-0">
@@ -5351,74 +5530,7 @@ create policy "Users can update own data" on public.nocturne_data
               </div>
             </div>
 
-            {/* Tools Card */}
-            <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4 shadow-lg" id="config-tools-box">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-brand-primary shadow-sm shadow-brand-primary/50" />
-                <span className="text-xs font-black text-white uppercase tracking-wider">Tools</span>
-              </div>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3" id="tools-buttons">
-                <button
-                  onClick={() => {
-                    setActiveScreen('notes');
-                  }}
-                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
-                  id="btn-tool-notes"
-                >
-                  <ScrollText className="text-brand-primary" size={20} />
-                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Notes</span>
-                </button>
-                
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsTheListPasswordModalOpen(true);
-                  }}
-                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
-                  id="btn-tool-thelist"
-                >
-                  <BookLock className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
-                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">The List</span>
-                </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveScreen('checklists');
-                  }}
-                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
-                  id="btn-tool-checklists"
-                >
-                  <ListChecks className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
-                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Checklists</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveScreen('pokopia');
-                  }}
-                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
-                  id="btn-tool-pokopia"
-                >
-                  <Compass className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
-                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Pokopia</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSpotifyModalOpen(true);
-                  }}
-                  className="flex flex-col items-center justify-center gap-2.5 p-4 rounded-xl border border-outline-variant/30 bg-bg-surface-med hover:bg-brand-primary/10 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer group"
-                  id="btn-tool-spotify"
-                >
-                  <Radio className="text-brand-primary/80 group-hover:text-brand-primary" size={20} />
-                  <span className="text-[10px] font-black uppercase tracking-wider font-display text-text-high">Spotify</span>
-                </button>
-              </div>
-            </div>
 
             {/* Tema (Aparência) */}
             <div className="bg-bg-surface-low border border-outline-variant/60 rounded-2xl p-5 space-y-4" id="config-appearance-box">
@@ -5545,12 +5657,19 @@ create policy "Users can update own data" on public.nocturne_data
                   </div>
                   <span className="text-white font-bold">{systemVersions.fuel}</span>
                 </li>
-                <li className="flex items-center justify-between text-text-muted py-1">
+                <li className="flex items-center justify-between text-text-muted py-1 border-b border-outline-variant/10">
                   <div className="flex items-center gap-2">
                     <span className="w-1 h-1 rounded-full bg-brand-primary" />
                     <span>Módulo Games</span>
                   </div>
                   <span className="text-white font-bold">{systemVersions.games}</span>
+                </li>
+                <li className="flex items-center justify-between text-text-muted py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-1 h-1 rounded-full bg-brand-primary" />
+                    <span>Módulo Tools</span>
+                  </div>
+                  <span className="text-white font-bold">{systemVersions.tools || 'v1.0.0'}</span>
                 </li>
               </ul>
 
@@ -6595,19 +6714,6 @@ create policy "Users can update own data" on public.nocturne_data
             className="flex flex-col space-y-6 text-left"
             id="notes-screen-view"
           >
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveScreen('config');
-                }}
-                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
-                id="btn-back-to-config"
-              >
-                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
-              </button>
-            </div>
-
             <NotesScreen 
               notes={notes} 
               setNotes={setNotes} 
@@ -6624,19 +6730,6 @@ create policy "Users can update own data" on public.nocturne_data
             className="flex flex-col space-y-6 text-left"
             id="thelist-screen-view"
           >
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveScreen('config');
-                }}
-                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
-                id="btn-back-to-config-from-thelist"
-              >
-                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
-              </button>
-            </div>
-
             <TheListScreen 
               theListEntries={theListEntries} 
               setTheListEntries={setTheListEntries} 
@@ -6656,19 +6749,6 @@ create policy "Users can update own data" on public.nocturne_data
             className="flex flex-col space-y-6 text-left"
             id="checklists-screen-view"
           >
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveScreen('config');
-                }}
-                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
-                id="btn-back-to-config-from-checklists"
-              >
-                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
-              </button>
-            </div>
-
             <ChecklistsScreen 
               checklists={checklists} 
               setChecklists={setChecklists} 
@@ -6686,22 +6766,26 @@ create policy "Users can update own data" on public.nocturne_data
             className="flex flex-col space-y-6 text-left"
             id="pokopia-screen-view"
           >
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveScreen('config');
-                }}
-                className="px-4 py-2 rounded-xl bg-bg-surface-low border border-outline-variant/30 hover:border-brand-primary text-text-muted hover:text-white transition-all cursor-pointer flex items-center gap-2 text-[10px] font-black uppercase tracking-wider font-display"
-                id="btn-back-to-config-from-pokopia"
-              >
-                <ArrowLeft size={14} strokeWidth={2.5} /> Voltar para System
-              </button>
-            </div>
-
             <PokopiaScreen 
               pokopiaEntries={pokopiaEntries} 
               setPokopiaEntries={setPokopiaEntries} 
+              triggerToast={triggerToast}
+              theme={theme}
+            />
+          </motion.div>
+        )}
+
+        {/* SHARE SCREEN */}
+        {activeScreen === 'share' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col space-y-4 sm:space-y-6 text-left"
+            id="share-screen-view"
+          >
+            <ShareScreen 
+              sharedFile={sharedFile} 
+              setSharedFile={setSharedFile} 
               triggerToast={triggerToast}
               theme={theme}
             />
@@ -6923,9 +7007,105 @@ create policy "Users can update own data" on public.nocturne_data
         )}
       </AnimatePresence>
 
+      {/* Mobile Submenu for TOOLS module (only shown when activeModule === 'tools' and showMobileSubmenu is true on mobile) */}
+      <AnimatePresence>
+        {activeModule === 'tools' && showMobileSubmenu && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 15 }}
+            className="fixed bottom-20 left-3 right-3 z-55 bg-zinc-950/95 backdrop-blur-md border border-outline-variant/30 px-2 py-3 rounded-2xl flex items-center justify-around md:hidden shadow-2xl"
+            id="mobile-tools-subnav"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('notes');
+                setActiveModule('tools');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'notes' && activeModule === 'tools' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-tools-notes"
+            >
+              <ScrollText size={16} />
+              <span className="text-[8px] font-black tracking-widest uppercase font-display">NOTES</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveModule('tools');
+                setIsTheListPasswordModalOpen(true);
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'thelist' && activeModule === 'tools' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-tools-thelist"
+            >
+              <BookLock size={16} />
+              <span className="text-[8px] font-black tracking-widest uppercase font-display">THE LIST</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('checklists');
+                setActiveModule('tools');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'checklists' && activeModule === 'tools' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-tools-checklists"
+            >
+              <ListChecks size={16} />
+              <span className="text-[8px] font-black tracking-widest uppercase font-display">LISTS</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('pokopia');
+                setActiveModule('tools');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'pokopia' && activeModule === 'tools' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-tools-pokopia"
+            >
+              <Compass size={16} />
+              <span className="text-[8px] font-black tracking-widest uppercase font-display">POKOPIA</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveScreen('share');
+                setActiveModule('tools');
+                setShowMobileSubmenu(false);
+              }}
+              className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeScreen === 'share' && activeModule === 'tools' ? 'text-brand-primary scale-105' : 'text-text-muted hover:text-text-high'}`}
+              id="btn-subnav-tools-share"
+            >
+              <Share2 size={16} />
+              <span className="text-[8px] font-black tracking-widest uppercase font-display">SHARE</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsSpotifyModalOpen(true);
+                setShowMobileSubmenu(false);
+              }}
+              className="flex flex-col items-center gap-1 cursor-pointer transition-all text-text-muted hover:text-text-high"
+              id="btn-subnav-tools-spotify"
+            >
+              <Radio size={16} />
+              <span className="text-[8px] font-black tracking-widest uppercase font-display">SPOTIFY</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Fixed bottom menu bar with active dynamic states */}
       <div 
-        className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-6 py-3.5 flex items-center justify-around md:hidden" 
+        className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-md border-t border-outline-variant/30 px-2 sm:px-6 py-3 flex items-center justify-around md:hidden" 
         id="bottom-menu-bar"
       >
         <button
@@ -6942,7 +7122,7 @@ create policy "Users can update own data" on public.nocturne_data
           id="btn-nav-finance"
         >
           <DollarSign size={18} className={activeModule === 'finance' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[9px] font-black tracking-widest uppercase font-display">FINANCE</span>
+          <span className="text-[8px] sm:text-[9px] font-black tracking-widest uppercase font-display">FINANCE</span>
         </button>
 
         <button
@@ -6959,7 +7139,7 @@ create policy "Users can update own data" on public.nocturne_data
           id="btn-nav-work"
         >
           <FABIcon size={18} className={activeModule === 'fab' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[9px] font-black tracking-widest uppercase font-display">WORK</span>
+          <span className="text-[8px] sm:text-[9px] font-black tracking-widest uppercase font-display">WORK</span>
         </button>
 
         <button
@@ -6976,7 +7156,7 @@ create policy "Users can update own data" on public.nocturne_data
           id="btn-nav-fuel"
         >
           <Fuel size={18} className={activeModule === 'fuel' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[9px] font-black tracking-widest uppercase font-display">FUEL</span>
+          <span className="text-[8px] sm:text-[9px] font-black tracking-widest uppercase font-display">FUEL</span>
         </button>
 
         <button
@@ -6993,7 +7173,24 @@ create policy "Users can update own data" on public.nocturne_data
           id="btn-nav-games"
         >
           <Gamepad2 size={18} className={activeModule === 'games' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
-          <span className="text-[9px] font-black tracking-widest uppercase font-display">GAMES</span>
+          <span className="text-[8px] sm:text-[9px] font-black tracking-widest uppercase font-display">GAMES</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (activeModule === 'tools') {
+              setShowMobileSubmenu(prev => !prev);
+            } else {
+              setActiveModule('tools');
+              setShowMobileSubmenu(true);
+            }
+          }}
+          className={`flex flex-col items-center gap-1 cursor-pointer transition-all ${activeModule === 'tools' ? 'text-brand-primary' : 'text-text-muted hover:text-text-high'}`}
+          id="btn-nav-tools"
+        >
+          <Wrench size={18} className={activeModule === 'tools' ? 'scale-110 text-brand-primary transition-transform' : 'transition-transform'} />
+          <span className="text-[8px] sm:text-[9px] font-black tracking-widest uppercase font-display">TOOLS</span>
         </button>
 
         <button
@@ -7007,7 +7204,7 @@ create policy "Users can update own data" on public.nocturne_data
           id="btn-nav-config"
         >
           <Settings size={18} className={activeModule === 'system' ? 'scale-110 text-brand-primary transition-transform rotate-45' : 'transition-transform'} />
-          <span className="text-[9px] font-black tracking-widest uppercase font-display">SYSTEM</span>
+          <span className="text-[8px] sm:text-[9px] font-black tracking-widest uppercase font-display">SYSTEM</span>
         </button>
       </div>
 
@@ -7100,6 +7297,7 @@ create policy "Users can update own data" on public.nocturne_data
                   e.preventDefault();
                   if (theListPasswordInput === 'Katet19xixmcmxcix!') {
                     setActiveScreen('thelist');
+                    setActiveModule('tools');
                     setTheListPasswordInput('');
                     setIsTheListPasswordModalOpen(false);
                     triggerToast('Acesso concedido!');
@@ -8249,6 +8447,18 @@ create policy "Users can update own data" on public.nocturne_data
                     onChange={(e) => setTempVersionGames(e.target.value)}
                     className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
                     id="inp-version-games"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[9px] uppercase tracking-widest text-[#ffe08b] font-bold font-mono">Módulo Tools</label>
+                  <input
+                    type="text"
+                    required
+                    value={tempVersionTools}
+                    onChange={(e) => setTempVersionTools(e.target.value)}
+                    className="w-full bg-black/40 border border-outline-variant/30 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-text-muted/50 focus:border-brand-primary outline-none font-mono"
+                    id="inp-version-tools"
                   />
                 </div>
 
