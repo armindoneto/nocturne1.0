@@ -347,6 +347,7 @@ export default function App() {
   const [passwordInput, setPasswordInput] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const lastProcessedUserIdRef = useRef<string | null>(null);
+  const lastSavedTimestampRef = useRef<string | null>(null);
 
   // --- Service Worker & Update States ---
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -487,15 +488,58 @@ export default function App() {
   const [isAnalysisView, setIsAnalysisView] = useState(false);
 
   // --- Navigation & Account Management Screens States ---
-  const [activeScreen, setActiveScreen] = useState<'budget' | 'contas' | 'plan' | 'temp' | 'config' | 'fab' | 'fuel' | 'games' | 'contracheque' | 'missoes' | 'me4' | 'notes' | 'escala' | 'thelist' | 'checklists' | 'pokopia' | 'share'>('budget');
-  const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'tools' | 'system'>('finance');
-  const [isFinanceExpanded, setIsFinanceExpanded] = useState(false);
-  const [isWorkExpanded, setIsWorkExpanded] = useState(false);
-  const [isFuelExpanded, setIsFuelExpanded] = useState(false);
-  const [isGamesExpanded, setIsGamesExpanded] = useState(false);
-  const [isToolsExpanded, setIsToolsExpanded] = useState(false);
+  const [activeScreen, setActiveScreen] = useState<
+    | 'budget'
+    | 'contas'
+    | 'plan'
+    | 'temp'
+    | 'config'
+    | 'fab'
+    | 'fuel'
+    | 'games'
+    | 'contracheque'
+    | 'missoes'
+    | 'me4'
+    | 'notes'
+    | 'escala'
+    | 'thelist'
+    | 'checklists'
+    | 'pokopia'
+    | 'share'
+  >(() => {
+    const saved = localStorage.getItem('nocturne_active_screen');
+    const validScreens = [
+      'budget', 'contas', 'plan', 'temp', 'config', 'fab', 'fuel', 'games',
+      'contracheque', 'missoes', 'me4', 'notes', 'escala', 'thelist',
+      'checklists', 'pokopia', 'share'
+    ];
+    if (saved && validScreens.includes(saved)) {
+      if (saved === 'thelist') return 'notes';
+      return saved as any;
+    }
+    return 'budget';
+  });
+
+  const [activeModule, setActiveModule] = useState<'finance' | 'fab' | 'fuel' | 'games' | 'tools' | 'system'>(() => {
+    const saved = localStorage.getItem('nocturne_active_module');
+    const validModules = ['finance', 'fab', 'fuel', 'games', 'tools', 'system'];
+    if (saved && validModules.includes(saved)) {
+      return saved as any;
+    }
+    return 'finance';
+  });
+
+  const [isFinanceExpanded, setIsFinanceExpanded] = useState(() => {
+    const saved = localStorage.getItem('nocturne_active_module');
+    return !saved || saved === 'finance';
+  });
+  const [isWorkExpanded, setIsWorkExpanded] = useState(() => localStorage.getItem('nocturne_active_module') === 'fab');
+  const [isFuelExpanded, setIsFuelExpanded] = useState(() => localStorage.getItem('nocturne_active_module') === 'fuel');
+  const [isGamesExpanded, setIsGamesExpanded] = useState(() => localStorage.getItem('nocturne_active_module') === 'games');
+  const [isToolsExpanded, setIsToolsExpanded] = useState(() => localStorage.getItem('nocturne_active_module') === 'tools');
   const [gamesSubmenu, setGamesSubmenu] = useState<'TROPHIES' | 'POKÉMON' | 'TO PLAY'>('TROPHIES');
   const [showMobileSubmenu, setShowMobileSubmenu] = useState(false);
+  const [isRefreshingApp, setIsRefreshingApp] = useState(false);
   const [newAccountName, setNewAccountName] = useState('');
   const [newAccountBalance, setNewAccountBalance] = useState('');
   const [newAccountColor, setNewAccountColor] = useState<string>('brand-primary');
@@ -858,6 +902,10 @@ export default function App() {
     return null;
   });
 
+  const [sharedText, setSharedText] = useState<string>(() => {
+    return localStorage.getItem('nocturne_shared_text') || '';
+  });
+
   // --- The List States ---
   const [theListEntries, setTheListEntries] = useState<TheListEntry[]>(() => {
     const saved = localStorage.getItem('nocturne_thelist_entries');
@@ -1164,6 +1212,10 @@ export default function App() {
   }, [sharedFile]);
 
   useEffect(() => {
+    localStorage.setItem('nocturne_shared_text', sharedText);
+  }, [sharedText]);
+
+  useEffect(() => {
     localStorage.setItem('nocturne_thelist_entries', JSON.stringify(theListEntries));
   }, [theListEntries]);
 
@@ -1259,6 +1311,237 @@ export default function App() {
     localStorage.setItem('nocturne_plan_cards', JSON.stringify(planCards));
   }, [planCards]);
 
+  useEffect(() => {
+    localStorage.setItem('nocturne_active_screen', activeScreen);
+  }, [activeScreen]);
+
+  useEffect(() => {
+    localStorage.setItem('nocturne_active_module', activeModule);
+  }, [activeModule]);
+
+  // Toast feedback if the app was just refreshed via top icon
+  useEffect(() => {
+    if (sessionStorage.getItem('nocturne_refreshed_toast')) {
+      sessionStorage.removeItem('nocturne_refreshed_toast');
+      triggerToast('Aplicativo atualizado com sucesso!');
+    }
+  }, []);
+
+  // Helper to apply loaded cloud data to state and storage
+  const applyLoadedData = (data: any, updatedAt?: string) => {
+    if (!data) return;
+    if (data.user) setUser(data.user);
+    if (data.accounts) {
+      const loadedAccs = (data.accounts as Account[]).map(acc => {
+        let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
+        if (updated.name === 'Repo Nu') {
+          updated = { ...updated, name: 'PIX' };
+        }
+        return updated;
+      });
+      setAccounts(loadedAccs);
+    }
+    if (data.accountHistory) {
+      setAccountHistory(data.accountHistory);
+    }
+    if (data.budgetAccounts) {
+      const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
+      setBudgetAccounts(loadedBudgetAccs);
+    }
+    if (data.transactions) {
+      const loadedTxs = (data.transactions as Transaction[]).map(tx => {
+        let updated = tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx;
+        if (updated.account === 'Repo Nu') {
+          updated = { ...updated, account: 'PIX' };
+        }
+        return updated;
+      });
+      setTransactions(loadedTxs);
+    }
+    if (data.cards) {
+      setCards(data.cards);
+    }
+    if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
+    if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
+    if (data.periodEnd !== undefined) setPeriodEnd(data.periodEnd);
+    if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
+    if (data.tempCategories) {
+      setTempCategories(data.tempCategories);
+    }
+    if (data.patrimonyHistory) {
+      setPatrimonyHistory(data.patrimonyHistory);
+    }
+    
+    let finalPlanEntries = data.planEntries || [];
+    let finalPlanCards = data.planCards || [];
+
+    if (!data.didClearLegacyCards_v10) {
+      finalPlanCards = [];
+      finalPlanEntries = finalPlanEntries.filter((entry: any) => entry.category !== 'cartoes' && !entry.cardId);
+      localStorage.setItem('nocturne_cards_cleared_v10', 'true');
+      triggerToast('Banco de cartões planejado resetado com sucesso!');
+    }
+
+    setPlanEntries(finalPlanEntries);
+    if (data.planIncomes) {
+      setPlanIncomes(data.planIncomes);
+    }
+    setPlanCards(finalPlanCards);
+    if (data.activePlanMonth !== undefined) setActivePlanMonth(data.activePlanMonth);
+    if (data.fuelEntries) {
+      setFuelEntries((data.fuelEntries as FuelEntry[]).sort((a, b) => a.km - b.km));
+    }
+    if (data.lastMaintenance !== undefined) {
+      setLastMaintenance(data.lastMaintenance);
+    }
+    if (data.contrachequeEntries !== undefined) {
+      setContrachequeEntries(data.contrachequeEntries);
+    }
+    if (data.historicoEntries !== undefined) {
+      setHistoricoEntries(data.historicoEntries);
+    }
+    if (data.me4Exclusions !== undefined) {
+      setMe4Exclusions(data.me4Exclusions);
+    }
+    if (data.me4Highlights !== undefined) {
+      setMe4Highlights(data.me4Highlights);
+    }
+    if (data.notes !== undefined) {
+      setNotes(data.notes);
+    }
+    if (data.checklists !== undefined) {
+      setChecklists(data.checklists);
+    }
+    if (data.pokopiaEntries !== undefined) {
+      setPokopiaEntries(data.pokopiaEntries);
+    }
+    if (data.sharedFile !== undefined) {
+      setSharedFile(data.sharedFile);
+      if (data.sharedFile) {
+        localStorage.setItem('nocturne_shared_file', JSON.stringify(data.sharedFile));
+      } else {
+        localStorage.removeItem('nocturne_shared_file');
+      }
+    }
+    if (data.sharedText !== undefined) {
+      setSharedText(data.sharedText || '');
+      localStorage.setItem('nocturne_shared_text', data.sharedText || '');
+    }
+    if (data.escalaTurnos !== undefined) {
+      setEscalaTurnos(data.escalaTurnos);
+    }
+    if (data.escalaDays !== undefined) {
+      setEscalaDays(data.escalaDays);
+    }
+    if (data.theListEntries !== undefined) {
+      setTheListEntries(data.theListEntries);
+    }
+    if (data.theListYearCounts !== undefined) {
+      setTheListYearCounts(data.theListYearCounts);
+    }
+    if (data.trophyEntries !== undefined && data.trophyEntries.length > 0) {
+      setTrophyEntries(data.trophyEntries);
+    } else {
+      setTrophyEntries(parseRawGames());
+    }
+    if (data.toPlayConsoles !== undefined) {
+      setToPlayConsoles(data.toPlayConsoles);
+    }
+    if (data.pokemonGenerations !== undefined) {
+      setPokemonGenerations(data.pokemonGenerations);
+    }
+    if (data.systemVersions !== undefined) {
+      setSystemVersions(data.systemVersions);
+    }
+    if (updatedAt) {
+      setCloudLastSynced(updatedAt);
+    }
+    setFirestoreWriteError(null);
+    setSyncStatus('synced');
+    setIsOffline(false);
+  };
+
+  // Immediate sync for shared file uploads (ensures instantaneous availability across instances)
+  const handleSetSharedFile = async (fileItem: SharedFileItem | null | ((prev: SharedFileItem | null) => SharedFileItem | null)) => {
+    const nextFile = typeof fileItem === 'function' ? fileItem(sharedFile) : fileItem;
+    setSharedFile(nextFile);
+    if (nextFile) {
+      localStorage.setItem('nocturne_shared_file', JSON.stringify(nextFile));
+    } else {
+      localStorage.removeItem('nocturne_shared_file');
+    }
+
+    if (firebaseUser && firebaseUser.uid !== 'local-user') {
+      const supabase = getSupabase();
+      if (supabase) {
+        try {
+          const { data: dbData } = await supabase
+            .from('nocturne_data')
+            .select('data')
+            .eq('user_id', firebaseUser.uid)
+            .maybeSingle();
+
+          const currentData = dbData?.data || {};
+          const nowStr = new Date().toISOString();
+          lastSavedTimestampRef.current = nowStr;
+          const { error: upsertErr } = await supabase
+            .from('nocturne_data')
+            .upsert({
+              user_id: firebaseUser.uid,
+              data: {
+                ...currentData,
+                sharedFile: nextFile
+              },
+              updated_at: nowStr
+            });
+
+          if (!upsertErr) {
+            setCloudLastSynced(nowStr);
+            setSyncStatus('synced');
+          }
+        } catch (e) {
+          console.warn("Immediate sharedFile sync error:", e);
+        }
+      }
+    }
+  };
+
+  // Refresh handler when user clicks the app icon at the top of the page
+  const handleAppRefresh = async () => {
+    if (isRefreshingApp) return;
+    setIsRefreshingApp(true);
+
+    // Ensure the current activeScreen and activeModule are saved so the reload returns right here
+    localStorage.setItem('nocturne_active_screen', activeScreen);
+    localStorage.setItem('nocturne_active_module', activeModule);
+    sessionStorage.setItem('nocturne_refreshed_toast', 'true');
+
+    triggerToast('Atualizando aplicativo e dados...');
+
+    // Pre-fetch from Supabase to accelerate data sync
+    const supabase = getSupabase();
+    if (supabase && firebaseUser && firebaseUser.uid !== 'local-user') {
+      try {
+        const { data: dbData, error: fetchErr } = await supabase
+          .from('nocturne_data')
+          .select('data, updated_at')
+          .eq('user_id', firebaseUser.uid)
+          .maybeSingle();
+
+        if (!fetchErr && dbData && dbData.data) {
+          applyLoadedData(dbData.data, (dbData as any).updated_at);
+        }
+      } catch (err) {
+        console.warn('Pre-reload cloud sync error:', err);
+      }
+    }
+
+    // Smooth transition before reloading page
+    setTimeout(() => {
+      window.location.reload();
+    }, 350);
+  };
+
   // --- Supabase Authenticated Sync & Listeners ---
   const handleFirestoreError = (error: unknown, operationType: 'create' | 'update' | 'delete' | 'list' | 'get' | 'write', path: string | null) => {
     const errInfo = {
@@ -1322,8 +1605,11 @@ export default function App() {
 
           if (dbData && (dbData as any).updated_at) {
             setCloudLastSynced((dbData as any).updated_at);
+            lastSavedTimestampRef.current = (dbData as any).updated_at;
           } else {
-            setCloudLastSynced(new Date().toISOString());
+            const now = new Date().toISOString();
+            setCloudLastSynced(now);
+            lastSavedTimestampRef.current = now;
           }
           setSyncStatus('synced');
 
@@ -1351,6 +1637,7 @@ export default function App() {
               checklists,
               pokopiaEntries,
               sharedFile,
+              sharedText,
               planEntries,
               planIncomes,
               planCards,
@@ -1387,122 +1674,7 @@ export default function App() {
           }
 
           if (dbData && dbData.data) {
-            const data = dbData.data;
-            if (data.user) setUser(data.user);
-            if (data.accounts) {
-              const loadedAccs = (data.accounts as Account[]).map(acc => {
-                let updated = acc.name === 'Aeternum' ? { ...acc, name: 'Æternum' } : acc;
-                if (updated.name === 'Repo Nu') {
-                  updated = { ...updated, name: 'PIX' };
-                }
-                return updated;
-              });
-              setAccounts(loadedAccs);
-            }
-            if (data.accountHistory) {
-              setAccountHistory(data.accountHistory);
-            }
-            if (data.budgetAccounts) {
-              const loadedBudgetAccs = (data.budgetAccounts as Account[]).map(acc => acc.name === 'Repo Nu' ? { ...acc, name: 'PIX' } : acc);
-              setBudgetAccounts(loadedBudgetAccs);
-            }
-            if (data.transactions) {
-              const loadedTxs = (data.transactions as Transaction[]).map(tx => {
-                let updated = tx.account === 'Aeternum' ? { ...tx, account: 'Æternum' } : tx;
-                if (updated.account === 'Repo Nu') {
-                  updated = { ...updated, account: 'PIX' };
-                }
-                return updated;
-              });
-              setTransactions(loadedTxs);
-            }
-            if (data.cards) {
-              setCards(data.cards);
-            }
-            if (data.periodActive !== undefined) setPeriodActive(data.periodActive);
-            if (data.periodStart !== undefined) setPeriodStart(data.periodStart);
-            if (data.periodEnd !== undefined) setPeriodEnd(data.periodEnd);
-            if (data.periodTotal !== undefined) setPeriodTotal(data.periodTotal);
-            if (data.tempCategories) {
-              setTempCategories(data.tempCategories);
-            }
-            if (data.patrimonyHistory) {
-              setPatrimonyHistory(data.patrimonyHistory);
-            }
-            
-            let finalPlanEntries = data.planEntries || [];
-            let finalPlanCards = data.planCards || [];
-
-            if (!data.didClearLegacyCards_v10) {
-              finalPlanCards = [];
-              finalPlanEntries = finalPlanEntries.filter((entry: any) => entry.category !== 'cartoes' && !entry.cardId);
-              localStorage.setItem('nocturne_cards_cleared_v10', 'true');
-              triggerToast('Banco de cartões planejado resetado com sucesso!');
-            }
-
-            setPlanEntries(finalPlanEntries);
-            if (data.planIncomes) {
-              setPlanIncomes(data.planIncomes);
-            }
-            setPlanCards(finalPlanCards);
-            if (data.activePlanMonth !== undefined) setActivePlanMonth(data.activePlanMonth);
-            if (data.fuelEntries) {
-              setFuelEntries((data.fuelEntries as FuelEntry[]).sort((a, b) => a.km - b.km));
-            }
-            if (data.lastMaintenance !== undefined) {
-              setLastMaintenance(data.lastMaintenance);
-            }
-            if (data.contrachequeEntries !== undefined) {
-              setContrachequeEntries(data.contrachequeEntries);
-            }
-            if (data.historicoEntries !== undefined) {
-              setHistoricoEntries(data.historicoEntries);
-            }
-            if (data.me4Exclusions !== undefined) {
-              setMe4Exclusions(data.me4Exclusions);
-            }
-            if (data.me4Highlights !== undefined) {
-              setMe4Highlights(data.me4Highlights);
-            }
-            if (data.notes !== undefined) {
-              setNotes(data.notes);
-            }
-            if (data.checklists !== undefined) {
-              setChecklists(data.checklists);
-            }
-            if (data.pokopiaEntries !== undefined) {
-              setPokopiaEntries(data.pokopiaEntries);
-            }
-            if (data.sharedFile !== undefined) {
-              setSharedFile(data.sharedFile);
-            }
-            if (data.escalaTurnos !== undefined) {
-              setEscalaTurnos(data.escalaTurnos);
-            }
-            if (data.escalaDays !== undefined) {
-              setEscalaDays(data.escalaDays);
-            }
-            if (data.theListEntries !== undefined) {
-              setTheListEntries(data.theListEntries);
-            }
-            if (data.theListYearCounts !== undefined) {
-              setTheListYearCounts(data.theListYearCounts);
-            }
-            if (data.trophyEntries !== undefined && data.trophyEntries.length > 0) {
-              setTrophyEntries(data.trophyEntries);
-            } else {
-              setTrophyEntries(parseRawGames());
-            }
-            if (data.toPlayConsoles !== undefined) {
-              setToPlayConsoles(data.toPlayConsoles);
-            }
-            if (data.pokemonGenerations !== undefined) {
-              setPokemonGenerations(data.pokemonGenerations);
-            }
-            if (data.systemVersions !== undefined) {
-              setSystemVersions(data.systemVersions);
-            }
-            setFirestoreWriteError(null);
+            applyLoadedData(dbData.data, (dbData as any).updated_at);
           }
           setDataLoadedFromFirestore(true);
         } catch (err: any) {
@@ -1531,6 +1703,82 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Supabase Realtime: Listen for real-time changes across devices/instances
+  useEffect(() => {
+    if (!firebaseUser || firebaseUser.uid === 'local-user' || !dataLoadedFromFirestore) {
+      return;
+    }
+
+    const supabase = getSupabase();
+    if (!supabase) return;
+
+    // Connect to Supabase Realtime publication on nocturne_data table for current user
+    const channelName = `realtime-nocturne-${firebaseUser.uid}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'nocturne_data',
+          filter: `user_id=eq.${firebaseUser.uid}`
+        },
+        (payload: any) => {
+          const newRow = payload?.new;
+          if (!newRow || !newRow.data) return;
+
+          // If this event was triggered by our own local write, skip applying to prevent echo loops
+          if (newRow.updated_at && newRow.updated_at === lastSavedTimestampRef.current) {
+            return;
+          }
+
+          console.log('[Supabase Realtime] Atualização remota recebida da nuvem:', newRow.updated_at);
+          lastSavedTimestampRef.current = newRow.updated_at;
+          applyLoadedData(newRow.data, newRow.updated_at);
+          triggerToast('Dados sincronizados em tempo real!');
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Supabase Realtime] Ouvinte Realtime ativo para usuário:', firebaseUser.uid);
+        }
+      });
+
+    // Auto-sync when tab regains focus or screen wakes up from sleep
+    const handleVisibilityOrFocus = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const { data: dbData } = await supabase
+            .from('nocturne_data')
+            .select('data, updated_at')
+            .eq('user_id', firebaseUser.uid)
+            .maybeSingle();
+
+          if (dbData && dbData.data && (dbData as any).updated_at) {
+            const remoteTimestamp = (dbData as any).updated_at;
+            if (remoteTimestamp !== cloudLastSynced && remoteTimestamp !== lastSavedTimestampRef.current) {
+              console.log('[Supabase Realtime] Sincronização ao focar tela/acordar:', remoteTimestamp);
+              lastSavedTimestampRef.current = remoteTimestamp;
+              applyLoadedData(dbData.data, remoteTimestamp);
+            }
+          }
+        } catch (err) {
+          console.warn('[Supabase Realtime] Erro ao sincronizar ao focar:', err);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [firebaseUser, dataLoadedFromFirestore, cloudLastSynced]);
 
   // Before unload handler to warn user if changes are still pending saving
   useEffect(() => {
@@ -1639,6 +1887,7 @@ export default function App() {
           checklists,
           pokopiaEntries,
           sharedFile,
+          sharedText,
           planEntries,
           planIncomes,
           planCards,
@@ -1656,7 +1905,37 @@ export default function App() {
           didClearLegacyCards_v10: true
         };
 
+        // Concurrency safeguard: Verify if the database was updated by another device while this instance was idle
+        try {
+          const { data: remoteCheck } = await supabase
+            .from('nocturne_data')
+            .select('data, updated_at')
+            .eq('user_id', firebaseUser.uid)
+            .maybeSingle();
+
+          const remoteTimestamp = (remoteCheck as any)?.updated_at;
+          if (
+            remoteTimestamp &&
+            lastSavedTimestampRef.current &&
+            remoteTimestamp > lastSavedTimestampRef.current &&
+            remoteTimestamp !== cloudLastSynced
+          ) {
+            console.warn('[Realtime Concurrency] Versão mais nova encontrada na nuvem. Sincronizando antes de gravar...');
+            if (remoteCheck && (remoteCheck as any).data) {
+              applyLoadedData((remoteCheck as any).data, remoteTimestamp);
+              lastSavedTimestampRef.current = remoteTimestamp;
+              setSaveLoading(false);
+              setSyncStatus('synced');
+              triggerToast('Dados atualizados com a versão mais recente da nuvem.');
+              return;
+            }
+          }
+        } catch (checkErr) {
+          console.warn('[Realtime Concurrency] Falha na checagem prévia, prosseguindo com salvamento local:', checkErr);
+        }
+
         const nowStr = new Date().toISOString();
+        lastSavedTimestampRef.current = nowStr;
         const { error: saveErr } = await supabase
           .from('nocturne_data')
           .upsert({
@@ -1714,6 +1993,7 @@ export default function App() {
     checklists,
     pokopiaEntries,
     sharedFile,
+    sharedText,
     activePlanMonth,
     escalaTurnos,
     escalaDays,
@@ -1870,6 +2150,7 @@ export default function App() {
           checklists,
           pokopiaEntries,
           sharedFile,
+          sharedText,
           planEntries,
           planIncomes,
           planCards,
@@ -1886,12 +2167,14 @@ export default function App() {
           didClearLegacyCards_v9: true,
           didClearLegacyCards_v10: true
         };
+        const nowStr = new Date().toISOString();
+        lastSavedTimestampRef.current = nowStr;
         const { error: saveErr } = await supabase
           .from('nocturne_data')
           .upsert({
             user_id: firebaseUser.uid,
             data: JSON.parse(JSON.stringify(dataToSave)),
-            updated_at: new Date().toISOString()
+            updated_at: nowStr
           });
         if (saveErr) {
           console.error("Save on sign out failed:", saveErr);
@@ -2810,7 +3093,8 @@ export default function App() {
         'nocturne_trophy_entries',
         'nocturne_toplay_consoles',
         'nocturne_pokemon_generations',
-        'nocturne_system_versions'
+        'nocturne_system_versions',
+        'nocturne_shared_text'
       ];
       
       keysToBackup.forEach(key => {
@@ -2874,7 +3158,8 @@ export default function App() {
           'nocturne_trophy_entries',
           'nocturne_toplay_consoles',
           'nocturne_pokemon_generations',
-          'nocturne_system_versions'
+          'nocturne_system_versions',
+          'nocturne_shared_text'
         ];
 
         const hasValidKey = keysToRestore.some(key => key in backupData);
@@ -2941,6 +3226,7 @@ export default function App() {
         if (backupData['nocturne_toplay_consoles']) setToPlayConsoles(JSON.parse(backupData['nocturne_toplay_consoles']!));
         if (backupData['nocturne_pokemon_generations']) setPokemonGenerations(JSON.parse(backupData['nocturne_pokemon_generations']!));
         if (backupData['nocturne_system_versions']) setSystemVersions(JSON.parse(backupData['nocturne_system_versions']!));
+        if (backupData['nocturne_shared_text'] !== undefined) setSharedText(backupData['nocturne_shared_text'] || '');
         
         if (firebaseUser && firebaseUser.uid !== 'local-user') {
           setDataLoadedFromFirestore(true);
@@ -3016,12 +3302,14 @@ export default function App() {
               toPlayConsoles: parsedToPlayConsoles,
               pokemonGenerations: parsedPokemonGenerations,
               systemVersions: parsedSystemVersions,
+              sharedText: backupData['nocturne_shared_text'] !== undefined ? (backupData['nocturne_shared_text'] || '') : sharedText,
               didClearLegacyCards_v8: true,
               didClearLegacyCards_v9: true,
               didClearLegacyCards_v10: true
             };
 
             const nowStr = new Date().toISOString();
+            lastSavedTimestampRef.current = nowStr;
             supabase
               .from('nocturne_data')
               .upsert({
@@ -3079,6 +3367,7 @@ export default function App() {
       const dataToSave = {
         user,
         accounts,
+        accountHistory,
         budgetAccounts,
         transactions,
         cards,
@@ -3097,6 +3386,8 @@ export default function App() {
         notes,
         checklists,
         pokopiaEntries,
+        sharedFile,
+        sharedText,
         planEntries,
         planIncomes,
         planCards,
@@ -3115,6 +3406,7 @@ export default function App() {
       };
 
       const nowStr = new Date().toISOString();
+      lastSavedTimestampRef.current = nowStr;
       const { error: saveErr } = await supabase
         .from('nocturne_data')
         .upsert({
@@ -3298,7 +3590,10 @@ create policy "Users can insert own data" on public.nocturne_data
   for insert with check (auth.uid() = user_id);
 
 create policy "Users can update own data" on public.nocturne_data
-  for update using (auth.uid() = user_id);`}
+  for update using (auth.uid() = user_id);
+
+-- Habilitar Realtime
+alter publication supabase_realtime add table public.nocturne_data;`}
             </pre>
 
             <p className="font-semibold text-brand-primary uppercase tracking-wider text-[10px] pt-2">Passo 2: Defina as Variáveis de Ambiente no AI Studio</p>
@@ -3406,17 +3701,31 @@ create policy "Users can update own data" on public.nocturne_data
       >
         <div className="space-y-8">
           {/* Logo Brand Header */}
-          <div className="flex items-center gap-3 pb-5 border-b border-outline-variant/10" id="desktop-sidebar-brand">
-            <img 
-              src="/nexus3.png" 
-              alt="NEXUS Logo" 
-              className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
-              referrerPolicy="no-referrer"
-            />
-            <div>
-              <h1 className="text-lg font-black tracking-wider text-white uppercase font-display leading-tight">NEXUS</h1>
+          <button 
+            type="button"
+            onClick={handleAppRefresh}
+            disabled={isRefreshingApp}
+            className="w-full flex items-center gap-3 pb-5 border-b border-outline-variant/10 text-left group cursor-pointer active:scale-95 transition-all outline-none" 
+            id="desktop-sidebar-brand"
+            title="Clique no ícone para recarregar o app e sincronizar dados da nuvem"
+          >
+            <div className="relative">
+              <img 
+                src="/nexus3.png" 
+                alt="NEXUS Logo" 
+                className={`w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover transition-all duration-300 ${isRefreshingApp ? 'animate-spin border-brand-primary' : 'group-hover:scale-105 group-hover:border-brand-primary/50'}`}
+                referrerPolicy="no-referrer"
+              />
+              {isRefreshingApp && (
+                <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center backdrop-blur-xs">
+                  <RotateCcw size={16} className="text-brand-primary animate-spin" />
+                </div>
+              )}
             </div>
-          </div>
+            <div>
+              <h1 className="text-lg font-black tracking-wider text-white uppercase font-display leading-tight group-hover:text-brand-primary transition-colors">NEXUS</h1>
+            </div>
+          </button>
 
           {/* Navigation Links */}
           <nav className="space-y-2 select-none" id="desktop-sidebar-nav">
@@ -3964,19 +4273,31 @@ create policy "Users can update own data" on public.nocturne_data
         
         {/* App Title Header with Generated Yellow/Black Icon (Visible on Mobile only) */}
         <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant/10 md:hidden" id="app-brand-header">
-          <div className="flex items-center gap-3">
-            <img 
-              src="/nexus3.png" 
-              alt="NEXUS Logo" 
-              className="w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover"
-              referrerPolicy="no-referrer"
-            />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-black tracking-wider text-white uppercase font-display leading-tight">NEXUS</h1>
-              </div>
+          <button
+            type="button"
+            onClick={handleAppRefresh}
+            disabled={isRefreshingApp}
+            className="flex items-center gap-3 text-left group cursor-pointer active:scale-95 transition-all outline-none"
+            title="Toque no ícone para recarregar o app e sincronizar dados da nuvem"
+            id="btn-header-refresh-mobile"
+          >
+            <div className="relative">
+              <img 
+                src="/nexus3.png" 
+                alt="NEXUS Logo" 
+                className={`w-10 h-10 rounded-xl shadow-md border border-brand-primary/20 object-cover transition-all duration-300 ${isRefreshingApp ? 'animate-spin border-brand-primary' : 'group-hover:scale-105 group-hover:border-brand-primary/50'}`}
+                referrerPolicy="no-referrer"
+              />
+              {isRefreshingApp && (
+                <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center backdrop-blur-xs">
+                  <RotateCcw size={16} className="text-brand-primary animate-spin" />
+                </div>
+              )}
             </div>
-          </div>
+            <div>
+              <h1 className="text-xl font-black tracking-wider text-white uppercase font-display leading-tight group-hover:text-brand-primary transition-colors">NEXUS</h1>
+            </div>
+          </button>
 
           <div className="flex items-center gap-2">
             {/* Mobile Sync Status Indicator */}
@@ -6785,9 +7106,13 @@ create policy "Users can update own data" on public.nocturne_data
           >
             <ShareScreen 
               sharedFile={sharedFile} 
-              setSharedFile={setSharedFile} 
+              setSharedFile={handleSetSharedFile} 
+              sharedText={sharedText}
+              setSharedText={setSharedText}
               triggerToast={triggerToast}
               theme={theme}
+              onRefresh={handleAppRefresh}
+              isRefreshing={isRefreshingApp}
             />
           </motion.div>
         )}

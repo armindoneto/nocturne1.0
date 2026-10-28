@@ -304,6 +304,10 @@ export interface SharedFileItem {
 export interface ShareScreenProps {
   sharedFile: SharedFileItem | null;
   setSharedFile: (file: SharedFileItem | null | ((prev: SharedFileItem | null) => SharedFileItem | null)) => void;
+  sharedText?: string;
+  setSharedText?: (text: string) => void;
   triggerToast: (msg: string) => void;
   theme?: 'dark' | 'light';
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }

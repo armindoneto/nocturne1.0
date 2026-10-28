@@ -16,19 +16,26 @@ import {
   Music, 
   CheckCircle2, 
   RefreshCw,
-  Loader2
+  Loader2,
+  Copy,
+  Check
 } from 'lucide-react';
 import { ShareScreenProps, SharedFileItem } from '../types';
 
 export const ShareScreen: React.FC<ShareScreenProps> = ({
   sharedFile,
   setSharedFile,
+  sharedText = '',
+  setSharedText,
   triggerToast,
-  theme = 'dark'
+  theme = 'dark',
+  onRefresh,
+  isRefreshing = false
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper format file size
@@ -317,6 +324,73 @@ export const ShareScreen: React.FC<ShareScreenProps> = ({
           </div>
         </div>
       )}
+
+      {/* Caixa de Texto Compartilhado */}
+      <div 
+        className="bg-bg-surface-low border border-outline-variant/30 rounded-2xl sm:rounded-3xl p-4 sm:p-5 shadow-lg space-y-3"
+        id="shared-text-card"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-black uppercase tracking-wider text-text-muted font-display">
+            Texto / Link
+          </span>
+
+          <div className="flex items-center gap-1.5">
+            {sharedText && sharedText.trim().length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(sharedText);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                    triggerToast('Texto copiado!');
+                  }}
+                  className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 text-brand-primary text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer"
+                  title="Copiar texto"
+                  id="btn-copy-shared-text"
+                >
+                  {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span>{copied ? 'Copiado' : 'Copiar'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (setSharedText) setSharedText('');
+                    triggerToast('Texto apagado.');
+                  }}
+                  className="p-1 rounded-lg hover:bg-red-500/10 text-text-muted hover:text-red-400 active:scale-95 transition-colors cursor-pointer"
+                  title="Limpar texto"
+                  id="btn-clear-shared-text"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <textarea
+          value={sharedText}
+          onChange={(e) => {
+            if (setSharedText) {
+              setSharedText(e.target.value);
+            }
+          }}
+          placeholder="Digite ou cole um texto ou link aqui..."
+          rows={5}
+          className="w-full bg-bg-surface-med/70 border border-outline-variant/30 rounded-xl p-3 text-xs sm:text-sm text-text-high placeholder:text-text-muted/40 focus:outline-none focus:border-brand-primary/60 transition-colors font-mono resize-y leading-relaxed"
+          id="shared-textarea"
+        />
+
+        {sharedText && sharedText.length > 0 && (
+          <div className="flex justify-between items-center text-[9px] font-mono text-text-muted/60 px-1">
+            <span>{sharedText.length} {sharedText.length === 1 ? 'caractere' : 'caracteres'}</span>
+            <span className="text-emerald-400/80">• Salvo automaticamente</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
